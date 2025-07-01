@@ -12,9 +12,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A1D02AD92E0DEC2D00791F25 /* waylon */ = {
+		A1D02AD92E0DEC2D00791F25 /* PTWM */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = waylon;
+			path = PTWM;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -34,7 +34,7 @@
 			isa = PBXGroup;
 			children = (
 				A1D02B1D2E0E1E9800791F25 /* Info.plist */,
-				A1D02AD92E0DEC2D00791F25 /* waylon */,
+				A1D02AD92E0DEC2D00791F25 /* PTWM */,
 				A1D02AD82E0DEC2D00791F25 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -63,7 +63,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A1D02AD92E0DEC2D00791F25 /* waylon */,
+				A1D02AD92E0DEC2D00791F25 /* PTWM */,
 			);
 			name = waylon;
 			packageProductDependencies = (
@@ -87,7 +87,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A1D02AD22E0DEC2D00791F25 /* Build configuration list for PBXProject "waylon" */;
+			buildConfigurationList = A1D02AD22E0DEC2D00791F25 /* Build configuration list for PBXProject "PTWM" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -259,11 +259,16 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker";
+				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker w/ Map";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location to track miles traveled even in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to track miles traveled.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires access to your microphone in order to record audio notes with trip logs.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses your motion data to track your activity during trips.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -271,7 +276,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.test.waylon;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -294,11 +299,16 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker";
+				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker w/ Map";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location to track miles traveled even in the background.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to track miles traveled.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app requires access to your microphone in order to record audio notes with trip logs.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses your motion data to track your activity during trips.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -306,7 +316,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.test.waylon;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -321,7 +331,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A1D02AD22E0DEC2D00791F25 /* Build configuration list for PBXProject "waylon" */ = {
+		A1D02AD22E0DEC2D00791F25 /* Build configuration list for PBXProject "PTWM" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1D02AF62E0DEC2E00791F25 /* Debug */,

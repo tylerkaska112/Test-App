@@ -34,7 +34,7 @@ struct InfoView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("Version: 2.4")
+                Text("Version: 3.0")
                     .padding()
 
                 Spacer()

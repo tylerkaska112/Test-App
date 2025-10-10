@@ -87,6 +87,72 @@ enum TripExportError: LocalizedError {
     }
 }
 
+// MARK: - SelectedImage Wrapper
+
+struct SelectedImage: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+// For JSON export
+fileprivate struct TripExport: Codable {
+    let id: UUID
+    let date: Date
+    let distance: Double
+    let notes: String
+    let pay: String
+    let audioNotes: [URL]
+    let photoURLs: [URL]
+    let startCoordinate: CodableCoordinate?
+    let endCoordinate: CodableCoordinate?
+    let startTime: Date
+    let endTime: Date
+    let reason: String
+    let isRecovered: Bool
+    let averageSpeed: Double?
+    
+    init(trip: Trip) {
+        self.id = trip.id
+        self.date = trip.date
+        self.distance = trip.distance
+        self.notes = trip.notes
+        self.pay = trip.pay
+        self.audioNotes = trip.audioNotes
+        self.photoURLs = trip.photoURLs
+        self.startCoordinate = trip.startCoordinate
+        self.endCoordinate = trip.endCoordinate
+        self.startTime = trip.startTime
+        self.endTime = trip.endTime
+        self.reason = trip.reason
+        self.isRecovered = trip.isRecovered
+        self.averageSpeed = trip.averageSpeed
+    }
+}
+
+// MARK: - Helper
+
+struct AverageSpeedFormatter {
+    static func string(forMetersPerSecond speed: Double, useKilometers: Bool) -> String {
+        if useKilometers {
+            let kmh = speed * 3.6
+            return String(format: "%.1f km/h", kmh)
+        } else {
+            let mph = speed * 2.23694
+            return String(format: "%.1f mph", mph)
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -428,44 +494,6 @@ struct TripLogView: View {
                     }
                     .disabled(viewModel.selectedTripIDs.isEmpty)
                 }
-                
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button(viewModel.selectedTripIDs.isEmpty ? "Select All" : "Deselect All") {
-                        toggleSelectAll()
-                    }
-                    .font(.subheadline.bold())
-                    .disabled(filteredTrips.isEmpty)
-                    
-                    Spacer()
-                    
-                    if !viewModel.selectedTripIDs.isEmpty {
-                        Button("Bulk Edit", systemImage: "pencil.circle") {
-                            showBulkEditSheet = true
-                        }
-                        
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Menu {
-                        ForEach(SortOption.allCases) { option in
-                            Button(action: { viewModel.sortOption = option }) {
-                                HStack {
-                                    Text(option.rawValue)
-                                    if viewModel.sortOption == option {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Label("Sort", systemImage: "arrow.up.arrow.down")
-                            .font(.subheadline.bold())
-                    }
-                }
             }
             .sheet(isPresented: $showShareSheet) {
                 if let url = exportURL {
@@ -518,6 +546,45 @@ struct TripLogView: View {
                 }
             } message: {
                 Text("Export features are available with Premium. Upgrade now to unlock advanced export options.")
+            }
+            .overlay(alignment: .bottom) {
+                if !viewModel.selectedTripIDs.isEmpty {
+                    VStack(spacing: 0) {
+                        Divider()
+                        
+                        HStack(spacing: 16) {
+                            Button(action: { toggleSelectAll() }) {
+                                Text(viewModel.selectedTripIDs.count == filteredTrips.count ? "Deselect All" : "Select All")
+                                    .font(.subheadline.bold())
+                            }
+                            .disabled(filteredTrips.isEmpty)
+                            
+                            Spacer()
+                            
+                            Text("\(viewModel.selectedTripIDs.count) selected")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            Button(action: { showBulkEditSheet = true }) {
+                                Label("Edit", systemImage: "pencil.circle")
+                                    .font(.subheadline.bold())
+                            }
+                            
+                            Button(action: { showDeleteConfirmation = true }) {
+                                Label("Delete", systemImage: "trash")
+                                    .font(.subheadline.bold())
+                            }
+                            .foregroundColor(.red)
+                        }
+                        .padding(.horizontal)
+                        .padding(.vertical, 12)
+                        .background(.regularMaterial)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(.spring(response: 0.3), value: viewModel.selectedTripIDs.isEmpty)
+                }
             }
             .overlay(toastOverlay)
             .onAppear {
@@ -826,680 +893,685 @@ struct TripLogView: View {
                         }
                         .tint(.red)
 
-                        Button("Edit", systemImage: "pencil") {
-                            editingTrip = trip
+                                                Button("Edit", systemImage: "pencil") {
+                                                    editingTrip = trip
+                                                }
+                                                .tint(.blue)
+                                            }
+                                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                                Button("Duplicate", systemImage: "doc.on.doc") {
+                                                    duplicateTrip(trip)
+                                                }
+                                                .tint(.green)
+                                            }
+                                            .contextMenu {
+                                                Button("View Details", systemImage: "info.circle") {
+                                                    selectedTrip = trip
+                                                }
+
+                                                Button("Edit Trip", systemImage: "pencil") {
+                                                    editingTrip = trip
+                                                }
+
+                                                Button("Duplicate Trip", systemImage: "doc.on.doc") {
+                                                    duplicateTrip(trip)
+                                                }
+
+                                                Divider()
+
+                                                Button("Share", systemImage: "square.and.arrow.up") {
+                                                    shareTrip(trip)
+                                                }
+
+                                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                                    deleteTrip(trip)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                .scrollContentBackground(.hidden)
+                                .background(Color.clear)
+                                .refreshable {
+                                    viewModel.invalidateCache()
+                                }
+                                .safeAreaInset(edge: .bottom) {
+                                    if !viewModel.selectedTripIDs.isEmpty {
+                                        Color.clear.frame(height: 60)
+                                    }
+                                }
+                                .sheet(item: $selectedTrip) { trip in
+                                    TripLogDetailView(trip: trip)
+                                }
+                            }
+                            
+                            private var emptyStateView: some View {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "car.fill")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("No Trips Recorded Yet")
+                                        .font(.title2.bold())
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("Start a trip to see it here")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Button("Import Existing Trips", systemImage: "square.and.arrow.down") {
+                                        showImportSheet = true
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .padding(.top, 8)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 60)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+                            
+                            private var emptyFilteredStateView: some View {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("No Trips Found")
+                                        .font(.title2.bold())
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("Try adjusting your search or filters")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Button("Reset Filters") {
+                                        withAnimation {
+                                            viewModel.resetFilters()
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .padding(.top, 8)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 60)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+                            
+                            private var toastOverlay: some View {
+                                VStack {
+                                    if showCopyToast {
+                                        HStack {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.white)
+                                            Text("\(copyFormat) copied to clipboard!")
+                                                .foregroundColor(.white)
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(Color.green.opacity(0.95))
+                                        .cornerRadius(10)
+                                        .shadow(radius: 10)
+                                        .transition(.move(edge: .top).combined(with: .opacity))
+                                        .onAppear {
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                                withAnimation {
+                                                    showCopyToast = false
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.top, 50)
+                                .allowsHitTesting(false)
+                            }
+                            
+                            // MARK: - Helper Functions
+                            
+                            private func authenticate() {
+                                let context = LAContext()
+                                var error: NSError?
+                                let policy: LAPolicy = tripLogProtectionMethod == "biometric" ? .deviceOwnerAuthenticationWithBiometrics : .deviceOwnerAuthentication
+                                
+                                if context.canEvaluatePolicy(policy, error: &error) {
+                                    context.evaluatePolicy(policy, localizedReason: "Unlock your trip logs") { success, evalError in
+                                        DispatchQueue.main.async {
+                                            if success {
+                                                withAnimation {
+                                                    isAuthenticated = true
+                                                    showAuthError = false
+                                                }
+                                                print("[TripLogView] Authentication successful.")
+                                            } else {
+                                                isAuthenticated = false
+                                                showAuthError = true
+                                                authErrorMessage = evalError?.localizedDescription ?? "Authentication failed."
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    isAuthenticated = false
+                                    showAuthError = true
+                                    authErrorMessage = error?.localizedDescription ?? "Authentication not available."
+                                }
+                            }
+                            
+                            private func toggleSelectAll() {
+                                let allIDs = Set(filteredTrips.map { $0.id })
+                                withAnimation {
+                                    if viewModel.selectedTripIDs == allIDs {
+                                        viewModel.selectedTripIDs.removeAll()
+                                    } else {
+                                        viewModel.selectedTripIDs = allIDs
+                                    }
+                                }
+                            }
+                            
+                            private func toggleSelection(for id: UUID) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if viewModel.selectedTripIDs.contains(id) {
+                                        viewModel.selectedTripIDs.remove(id)
+                                    } else {
+                                        viewModel.selectedTripIDs.insert(id)
+                                    }
+                                }
+                            }
+                            
+                            private func deleteTrip(_ trip: Trip) {
+                                guard let index = tripManager.trips.firstIndex(where: { $0.id == trip.id }) else { return }
+                                
+                                // Store for undo
+                                let deletedTrip = trip
+                                tripManager.deleteTrip(at: IndexSet(integer: index))
+                                viewModel.selectedTripIDs.remove(trip.id)
+                                viewModel.invalidateCache()
+                                
+                                // Register undo (target must be a class type)
+                                undoManager?.registerUndo(withTarget: tripManager) { manager in
+                                    manager.trips.append(deletedTrip)
+                                    // Clear any selection of the restored trip and refresh filters
+                                    viewModel.selectedTripIDs.remove(deletedTrip.id)
+                                    viewModel.invalidateCache()
+                                }
+                                undoManager?.setActionName("Delete Trip")
+                            }
+                            
+                            private func deleteSelectedTrips() {
+                                let tripsToDelete = selectedTrips
+                                let indices = tripManager.trips.enumerated()
+                                    .filter { viewModel.selectedTripIDs.contains($0.element.id) }
+                                    .map { $0.offset }
+                                
+                                let indexSet = IndexSet(indices)
+                                tripManager.deleteTrip(at: indexSet)
+                                viewModel.selectedTripIDs.removeAll()
+                                viewModel.invalidateCache()
+                                
+                                // Register undo for bulk delete (target must be a class type)
+                                undoManager?.registerUndo(withTarget: tripManager) { manager in
+                                    tripsToDelete.forEach { manager.trips.append($0) }
+                                    viewModel.selectedTripIDs.subtract(tripsToDelete.map { $0.id })
+                                    viewModel.invalidateCache()
+                                }
+                                undoManager?.setActionName("Delete \(tripsToDelete.count) Trips")
+                            }
+                            
+                            private func duplicateTrip(_ trip: Trip) {
+                                guard validateTrip(trip) else {
+                                    print("Invalid trip data, cannot duplicate")
+                                    return
+                                }
+                                
+                                let duplicatedTrip = Trip(
+                                    id: UUID(),
+                                    date: Date(),
+                                    distance: trip.distance,
+                                    notes: trip.notes + " (Copy)",
+                                    pay: trip.pay,
+                                    audioNotes: [],
+                                    photoURLs: [],
+                                    startCoordinate: trip.startCoordinate,
+                                    endCoordinate: trip.endCoordinate,
+                                    routeCoordinates: trip.routeCoordinates,
+                                    startTime: Date(),
+                                    endTime: Date().addingTimeInterval(trip.endTime.timeIntervalSince(trip.startTime)),
+                                    reason: trip.reason,
+                                    isRecovered: false,
+                                    averageSpeed: trip.averageSpeed
+                                )
+                                
+                                tripManager.trips.append(duplicatedTrip)
+                                viewModel.invalidateCache()
+                                
+                                // Register undo (target must be a class type)
+                                undoManager?.registerUndo(withTarget: tripManager) { manager in
+                                    if let index = manager.trips.firstIndex(where: { $0.id == duplicatedTrip.id }) {
+                                        manager.deleteTrip(at: IndexSet(integer: index))
+                                        viewModel.selectedTripIDs.remove(duplicatedTrip.id)
+                                        viewModel.invalidateCache()
+                                    }
+                                }
+                                undoManager?.setActionName("Duplicate Trip")
+                            }
+                            
+                            private func validateTrip(_ trip: Trip) -> Bool {
+                                return trip.distance > 0
+                                    && trip.endTime > trip.startTime
+                                    && (trip.averageSpeed ?? 0) < 300 // Max 300 m/s (~670 mph) reasonable check
+                            }
+                            
+                            private func shareTrip(_ trip: Trip) {
+                                let formattedDate = trip.startTime.formatted(date: .abbreviated, time: .shortened)
+                                let formattedDistance = formatDistance(trip.distance)
+                                let duration = formattedDuration(from: trip.startTime, to: trip.endTime)
+                                
+                                let text = """
+                                🚗 Trip Details
+                                
+                                📅 Date: \(formattedDate)
+                                📍 Distance: \(formattedDistance)
+                                ⏱️ Duration: \(duration)
+                                🏷️ Category: \(trip.reason)
+                                📝 Notes: \(trip.notes)
+                                \(trip.pay.isEmpty ? "" : "💰 Pay: \(trip.pay)")
+                                """
+                                
+                                let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+                                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                                   let rootVC = windowScene.windows.first?.rootViewController {
+                                    rootVC.present(activityVC, animated: true)
+                                }
+                            }
+                            
+                            private func attemptPremiumFeature(action: () -> Void) {
+                                if premiumManager.isPremium {
+                                    action()
+                                } else {
+                                    showPremiumUpgradePrompt = true
+                                }
+                            }
+                            
+                            private func exportTrips(format: ExportFormat) {
+                                guard !viewModel.selectedTripIDs.isEmpty else {
+                                    exportError = .noTripsSelected
+                                    showExportError = true
+                                    return
+                                }
+                                
+                                switch format {
+                                case .csv:
+                                    exportTripLogsToCSV(selected: selectedTrips)
+                                case .json:
+                                    exportTripLogsToJSON(selected: selectedTrips)
+                                }
+                            }
+                            
+                            private func copyToClipboard(format: ExportFormat) {
+                                guard !viewModel.selectedTripIDs.isEmpty else {
+                                    exportError = .noTripsSelected
+                                    showExportError = true
+                                    return
+                                }
+                                
+                                switch format {
+                                case .csv:
+                                    copyCSVToClipboard(selected: selectedTrips)
+                                case .json:
+                                    copyJSONToClipboard(selected: selectedTrips)
+                                }
+                            }
+                            
+                            private func exportTripLogsToCSV(selected: [Trip]) {
+                                let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
+                                let rows = selected.map { trip in
+                                    let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
+                                    let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
+                                    let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+                                    let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+                                    let distanceStr = String(format: "%.4f", trip.distance)
+                                    let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
+                                    let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
+                                    let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
+                                    return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
+                                }.joined(separator: "\n")
+                                
+                                let csvString = header + rows
+                                
+                                do {
+                                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).csv")
+                                    try csvString.write(to: tempURL, atomically: true, encoding: .utf8)
+                                    exportURL = tempURL
+                                    showShareSheet = true
+                                } catch {
+                                    exportError = .fileWriteFailed(error)
+                                    showExportError = true
+                                    print("Failed to create CSV file: \(error)")
+                                }
+                            }
+                            
+                            private func copyCSVToClipboard(selected: [Trip]) {
+                                let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
+                                let rows = selected.map { trip in
+                                    let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
+                                    let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
+                                    let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+                                    let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+                                    let distanceStr = String(format: "%.4f", trip.distance)
+                                    let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
+                                    let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
+                                    let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
+                                    return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
+                                }.joined(separator: "\n")
+                                
+                                let csvString = header + rows
+                                UIPasteboard.general.string = csvString
+                                
+                                withAnimation {
+                                    showCopyToast = true
+                                    copyFormat = "CSV"
+                                }
+                            }
+                            
+                            private func exportTripLogsToJSON(selected: [Trip]) {
+                                do {
+                                    let exportList = selected.map { TripExport(trip: $0) }
+                                    let encoder = JSONEncoder()
+                                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                                    encoder.dateEncodingStrategy = .iso8601
+                                    
+                                    let data = try encoder.encode(exportList)
+                                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).json")
+                                    try data.write(to: tempURL)
+                                    exportURL = tempURL
+                                    showShareSheet = true
+                                } catch {
+                                    exportError = .fileWriteFailed(error)
+                                    showExportError = true
+                                    print("Failed to create JSON file: \(error)")
+                                }
+                            }
+                            
+                            private func copyJSONToClipboard(selected: [Trip]) {
+                                do {
+                                    let exportList = selected.map { TripExport(trip: $0) }
+                                    let encoder = JSONEncoder()
+                                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                                    encoder.dateEncodingStrategy = .iso8601
+                                    
+                                    let data = try encoder.encode(exportList)
+                                    if let jsonString = String(data: data, encoding: .utf8) {
+                                        UIPasteboard.general.string = jsonString
+                                        withAnimation {
+                                            showCopyToast = true
+                                            copyFormat = "JSON"
+                                        }
+                                    } else {
+                                        throw TripExportError.invalidData
+                                    }
+                                } catch {
+                                    exportError = .encodingFailed
+                                    showExportError = true
+                                    print("Failed to encode JSON for clipboard: \(error)")
+                                }
+                            }
+                            
+                            private func addToRecentSearches(_ search: String) {
+                                let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                
+                                var searches = recentSearches
+                                searches.removeAll { $0 == trimmed }
+                                searches.insert(trimmed, at: 0)
+                                searches = Array(searches.prefix(10))
+                                
+                                if let data = try? JSONEncoder().encode(searches) {
+                                    recentSearchesData = data
+                                }
+                            }
+                            
+                            private func playAudio(from url: URL) {
+                                do {
+                                    let session = AVAudioSession.sharedInstance()
+                                    try session.setCategory(.playAndRecord, options: [.defaultToSpeaker])
+                                    try session.setActive(true)
+                                } catch {
+                                    audioErrorMessage = "Audio session setup failed: \(error.localizedDescription)"
+                                    showAudioErrorAlert = true
+                                    return
+                                }
+                                
+                                do {
+                                    audioPlayer = try AVAudioPlayer(contentsOf: url)
+                                    audioPlayer?.prepareToPlay()
+                                    audioPlayer?.play()
+                                    
+                                    // Auto cleanup after playback
+                                    if let duration = audioPlayer?.duration {
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.5) {
+                                            stopAudioPlayer()
+                                        }
+                                    }
+                                } catch {
+                                    audioErrorMessage = "Unable to play audio note: \(error.localizedDescription)"
+                                    showAudioErrorAlert = true
+                                }
+                            }
+                            
+                            private func stopAudioPlayer() {
+                                audioPlayer?.stop()
+                                audioPlayer = nil
+                            }
+                            
+                            private func formatDistance(_ meters: Double) -> String {
+                                if useKilometers {
+                                    return String(format: "%.1f km", meters / 1000)
+                                } else {
+                                    return String(format: "%.1f mi", meters * 0.000621371)
+                                }
+                            }
+                            
+                            private func formatDuration(_ seconds: TimeInterval) -> String {
+                                let hours = Int(seconds) / 3600
+                                let minutes = (Int(seconds) % 3600) / 60
+                                
+                                if hours > 0 {
+                                    return "\(hours)h \(minutes)m"
+                                } else {
+                                    return "\(minutes)m"
+                                }
+                            }
+                            
+                            private func formattedDuration(from start: Date, to end: Date) -> String {
+                                formatDuration(end.timeIntervalSince(start))
+                            }
                         }
-                        .tint(.blue)
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button("Duplicate", systemImage: "doc.on.doc") {
-                            duplicateTrip(trip)
-                        }
-                        .tint(.green)
-                    }
-                    .contextMenu {
-                        Button("View Details", systemImage: "info.circle") {
-                            selectedTrip = trip
-                        }
 
-                        Button("Edit Trip", systemImage: "pencil") {
-                            editingTrip = trip
-                        }
+                        // MARK: - Supporting Views
 
-                        Button("Duplicate Trip", systemImage: "doc.on.doc") {
-                            duplicateTrip(trip)
-                        }
-
-                        Divider()
-
-                        Button("Share", systemImage: "square.and.arrow.up") {
-                            shareTrip(trip)
+                        struct FilterRow<Content: View>: View {
+                            let title: String
+                            let content: Content
+                            
+                            init(title: String, @ViewBuilder content: () -> Content) {
+                                self.title = title
+                                self.content = content()
+                            }
+                            
+                            var body: some View {
+                                HStack {
+                                    Text(title)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    content
+                                }
+                            }
                         }
 
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            deleteTrip(trip)
+                        struct StatBox: View {
+                            let value: String
+                            let label: String
+                            let color: Color
+                            let icon: String
+                            
+                            var body: some View {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: icon)
+                                            .font(.caption2)
+                                        Text(value)
+                                            .font(.title3.bold())
+                                    }
+                                    .foregroundColor(color)
+                                    
+                                    Text(label)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
-                    }
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .refreshable {
-            viewModel.invalidateCache()
-        }
-        .sheet(item: $selectedTrip) { trip in
-            TripLogDetailView(trip: trip)
-        }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "car.fill")
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
-            
-            Text("No Trips Recorded Yet")
-                .font(.title2.bold())
-                .foregroundColor(.primary)
-            
-            Text("Start a trip to see it here")
-                .font(.body)
-                .foregroundColor(.secondary)
-            
-            Button("Import Existing Trips", systemImage: "square.and.arrow.down") {
-                showImportSheet = true
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-    }
-    
-    private var emptyFilteredStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 50))
-                .foregroundColor(.secondary)
-            
-            Text("No Trips Found")
-                .font(.title2.bold())
-                .foregroundColor(.primary)
-            
-            Text("Try adjusting your search or filters")
-                .font(.body)
-                .foregroundColor(.secondary)
-            
-            Button("Reset Filters") {
-                withAnimation {
-                    viewModel.resetFilters()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-    }
-    
-    private var toastOverlay: some View {
-        VStack {
-            if showCopyToast {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.white)
-                    Text("\(copyFormat) copied to clipboard!")
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.green.opacity(0.95))
-                .cornerRadius(10)
-                .shadow(radius: 10)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        withAnimation {
-                            showCopyToast = false
+
+                        struct ImageDetailView: View {
+                            let image: UIImage
+                            let onClose: () -> Void
+                            
+                            var body: some View {
+                                ZStack {
+                                    Color.black.ignoresSafeArea()
+                                    
+                                    VStack {
+                                        HStack {
+                                            Spacer()
+                                            Button(action: onClose) {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.title)
+                                                    .foregroundColor(.white)
+                                                    .padding()
+                                            }
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFit()
+                                            .padding()
+                                        
+                                        Spacer()
+                                    }
+                                }
+                            }
                         }
-                    }
-                }
-            }
-            Spacer()
-        }
-        .padding(.top, 50)
-        .allowsHitTesting(false)
-    }
-    
-    // MARK: - Helper Functions
-    
-    private func authenticate() {
-        let context = LAContext()
-        var error: NSError?
-        let policy: LAPolicy = tripLogProtectionMethod == "biometric" ? .deviceOwnerAuthenticationWithBiometrics : .deviceOwnerAuthentication
-        
-        if context.canEvaluatePolicy(policy, error: &error) {
-            context.evaluatePolicy(policy, localizedReason: "Unlock your trip logs") { success, evalError in
-                DispatchQueue.main.async {
-                    if success {
-                        withAnimation {
-                            isAuthenticated = true
-                            showAuthError = false
+
+                        struct BulkEditView: View {
+                            let trips: [Trip]
+                            let onSave: ([Trip]) -> Void
+                            @Environment(\.dismiss) private var dismiss
+                            
+                            @State private var newReason: String = ""
+                            @State private var newPay: String = ""
+                            @State private var applyReason = false
+                            @State private var applyPay = false
+                            
+                            var body: some View {
+                                NavigationView {
+                                    Form {
+                                        Section("Bulk Edit \(trips.count) Trips") {
+                                            Toggle("Update Category", isOn: $applyReason)
+                                            if applyReason {
+                                                TextField("New Category", text: $newReason)
+                                            }
+                                            
+                                            Toggle("Update Pay", isOn: $applyPay)
+                                            if applyPay {
+                                                TextField("New Pay", text: $newPay)
+                                                    .keyboardType(.decimalPad)
+                                            }
+                                        }
+                                        
+                                        Section {
+                                            Text("This will update all \(trips.count) selected trips")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                    .navigationTitle("Bulk Edit")
+                                    .navigationBarTitleDisplayMode(.inline)
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Cancel") { dismiss() }
+                                        }
+                                        ToolbarItem(placement: .confirmationAction) {
+                                            Button("Save") {
+                                                saveBulkChanges()
+                                            }
+                                            .disabled(!applyReason && !applyPay)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            private func saveBulkChanges() {
+                                var updatedTrips = trips
+                                
+                                for i in 0..<updatedTrips.count {
+                                    var trip = updatedTrips[i]
+                                    if applyReason {
+                                        trip.reason = newReason
+                                    }
+                                    if applyPay {
+                                        trip.pay = newPay
+                                    }
+                                    updatedTrips[i] = trip
+                                }
+                                
+                                onSave(updatedTrips)
+                                dismiss()
+                            }
                         }
-                        print("[TripLogView] Authentication successful.")
-                    } else {
-                        isAuthenticated = false
-                        showAuthError = true
-                        authErrorMessage = evalError?.localizedDescription ?? "Authentication failed."
-                    }
-                }
-            }
-        } else {
-            isAuthenticated = false
-            showAuthError = true
-            authErrorMessage = error?.localizedDescription ?? "Authentication not available."
-        }
-    }
-    
-    private func toggleSelectAll() {
-        let allIDs = Set(filteredTrips.map { $0.id })
-        withAnimation {
-            if viewModel.selectedTripIDs == allIDs {
-                viewModel.selectedTripIDs.removeAll()
-            } else {
-                viewModel.selectedTripIDs = allIDs
-            }
-        }
-    }
-    
-    private func toggleSelection(for id: UUID) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if viewModel.selectedTripIDs.contains(id) {
-                viewModel.selectedTripIDs.remove(id)
-            } else {
-                viewModel.selectedTripIDs.insert(id)
-            }
-        }
-    }
-    
-    private func deleteTrip(_ trip: Trip) {
-        guard let index = tripManager.trips.firstIndex(where: { $0.id == trip.id }) else { return }
-        
-        // Store for undo
-        let deletedTrip = trip
-        tripManager.deleteTrip(at: IndexSet(integer: index))
-        viewModel.selectedTripIDs.remove(trip.id)
-        viewModel.invalidateCache()
-        
-        // Register undo (target must be a class type)
-        undoManager?.registerUndo(withTarget: tripManager) { manager in
-            manager.trips.append(deletedTrip)
-            // Clear any selection of the restored trip and refresh filters
-            viewModel.selectedTripIDs.remove(deletedTrip.id)
-            viewModel.invalidateCache()
-        }
-        undoManager?.setActionName("Delete Trip")
-    }
-    
-    private func deleteSelectedTrips() {
-        let tripsToDelete = selectedTrips
-        let indices = tripManager.trips.enumerated()
-            .filter { viewModel.selectedTripIDs.contains($0.element.id) }
-            .map { $0.offset }
-        
-        let indexSet = IndexSet(indices)
-        tripManager.deleteTrip(at: indexSet)
-        viewModel.selectedTripIDs.removeAll()
-        viewModel.invalidateCache()
-        
-        // Register undo for bulk delete (target must be a class type)
-        undoManager?.registerUndo(withTarget: tripManager) { manager in
-            tripsToDelete.forEach { manager.trips.append($0) }
-            viewModel.selectedTripIDs.subtract(tripsToDelete.map { $0.id })
-            viewModel.invalidateCache()
-        }
-        undoManager?.setActionName("Delete \(tripsToDelete.count) Trips")
-    }
-    
-    private func duplicateTrip(_ trip: Trip) {
-        guard validateTrip(trip) else {
-            print("Invalid trip data, cannot duplicate")
-            return
-        }
-        
-        let duplicatedTrip = Trip(
-            id: UUID(),
-            date: Date(),
-            distance: trip.distance,
-            notes: trip.notes + " (Copy)",
-            pay: trip.pay,
-            audioNotes: [],
-            photoURLs: [],
-            startCoordinate: trip.startCoordinate,
-            endCoordinate: trip.endCoordinate,
-            routeCoordinates: trip.routeCoordinates,
-            startTime: Date(),
-            endTime: Date().addingTimeInterval(trip.endTime.timeIntervalSince(trip.startTime)),
-            reason: trip.reason,
-            isRecovered: false,
-            averageSpeed: trip.averageSpeed
-        )
-        
-        tripManager.trips.append(duplicatedTrip)
-        viewModel.invalidateCache()
-        
-        // Register undo (target must be a class type)
-        undoManager?.registerUndo(withTarget: tripManager) { manager in
-            if let index = manager.trips.firstIndex(where: { $0.id == duplicatedTrip.id }) {
-                manager.deleteTrip(at: IndexSet(integer: index))
-                viewModel.selectedTripIDs.remove(duplicatedTrip.id)
-                viewModel.invalidateCache()
-            }
-        }
-        undoManager?.setActionName("Duplicate Trip")
-    }
-    
-    private func validateTrip(_ trip: Trip) -> Bool {
-        return trip.distance > 0
-            && trip.endTime > trip.startTime
-            && (trip.averageSpeed ?? 0) < 300 // Max 300 m/s (~670 mph) reasonable check
-    }
-    
-    private func shareTrip(_ trip: Trip) {
-        let formattedDate = trip.startTime.formatted(date: .abbreviated, time: .shortened)
-        let formattedDistance = formatDistance(trip.distance)
-        let duration = formattedDuration(from: trip.startTime, to: trip.endTime)
-        
-        let text = """
-        🚗 Trip Details
-        
-        📅 Date: \(formattedDate)
-        📍 Distance: \(formattedDistance)
-        ⏱️ Duration: \(duration)
-        🏷️ Category: \(trip.reason)
-        📝 Notes: \(trip.notes)
-        \(trip.pay.isEmpty ? "" : "💰 Pay: \(trip.pay)")
-        """
-        
-        let activityVC = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(activityVC, animated: true)
-        }
-    }
-    
-    private func attemptPremiumFeature(action: () -> Void) {
-        if premiumManager.isPremium {
-            action()
-        } else {
-            showPremiumUpgradePrompt = true
-        }
-    }
-    
-    private func exportTrips(format: ExportFormat) {
-        guard !viewModel.selectedTripIDs.isEmpty else {
-            exportError = .noTripsSelected
-            showExportError = true
-            return
-        }
-        
-        switch format {
-        case .csv:
-            exportTripLogsToCSV(selected: selectedTrips)
-        case .json:
-            exportTripLogsToJSON(selected: selectedTrips)
-        }
-    }
-    
-    private func copyToClipboard(format: ExportFormat) {
-        guard !viewModel.selectedTripIDs.isEmpty else {
-            exportError = .noTripsSelected
-            showExportError = true
-            return
-        }
-        
-        switch format {
-        case .csv:
-            copyCSVToClipboard(selected: selectedTrips)
-        case .json:
-            copyJSONToClipboard(selected: selectedTrips)
-        }
-    }
-    
-    private func exportTripLogsToCSV(selected: [Trip]) {
-        let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
-        let rows = selected.map { trip in
-            let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
-            let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
-            let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-            let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-            let distanceStr = String(format: "%.4f", trip.distance)
-            let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
-            let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
-            let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
-        }.joined(separator: "\n")
-        
-        let csvString = header + rows
-        
-        do {
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).csv")
-            try csvString.write(to: tempURL, atomically: true, encoding: .utf8)
-            exportURL = tempURL
-            showShareSheet = true
-        } catch {
-            exportError = .fileWriteFailed(error)
-            showExportError = true
-            print("Failed to create CSV file: \(error)")
-        }
-    }
-    
-    private func copyCSVToClipboard(selected: [Trip]) {
-        let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
-        let rows = selected.map { trip in
-            let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
-            let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
-            let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-            let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-            let distanceStr = String(format: "%.4f", trip.distance)
-            let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
-            let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
-            let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
-        }.joined(separator: "\n")
-        
-        let csvString = header + rows
-        UIPasteboard.general.string = csvString
-        
-        withAnimation {
-            showCopyToast = true
-            copyFormat = "CSV"
-        }
-    }
-    
-    private func exportTripLogsToJSON(selected: [Trip]) {
-        do {
-            let exportList = selected.map { TripExport(trip: $0) }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            
-            let data = try encoder.encode(exportList)
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).json")
-            try data.write(to: tempURL)
-            exportURL = tempURL
-            showShareSheet = true
-        } catch {
-            exportError = .fileWriteFailed(error)
-            showExportError = true
-            print("Failed to create JSON file: \(error)")
-        }
-    }
-    
-    private func copyJSONToClipboard(selected: [Trip]) {
-        do {
-            let exportList = selected.map { TripExport(trip: $0) }
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
-            
-            let data = try encoder.encode(exportList)
-            if let jsonString = String(data: data, encoding: .utf8) {
-                UIPasteboard.general.string = jsonString
-                withAnimation {
-                    showCopyToast = true
-                    copyFormat = "JSON"
-                }
-            } else {
-                throw TripExportError.invalidData
-            }
-        } catch {
-            exportError = .encodingFailed
-            showExportError = true
-            print("Failed to encode JSON for clipboard: \(error)")
-        }
-    }
-    
-    private func addToRecentSearches(_ search: String) {
-        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        
-        var searches = recentSearches
-        searches.removeAll { $0 == trimmed }
-        searches.insert(trimmed, at: 0)
-        searches = Array(searches.prefix(10))
-        
-        if let data = try? JSONEncoder().encode(searches) {
-            recentSearchesData = data
-        }
-    }
-    
-    private func playAudio(from url: URL) {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, options: [.defaultToSpeaker])
-            try session.setActive(true)
-        } catch {
-            audioErrorMessage = "Audio session setup failed: \(error.localizedDescription)"
-            showAudioErrorAlert = true
-            return
-        }
-        
-        do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
-            
-            // Auto cleanup after playback
-            if let duration = audioPlayer?.duration {
-                DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.5) {
-                    stopAudioPlayer()
-                }
-            }
-        } catch {
-            audioErrorMessage = "Unable to play audio note: \(error.localizedDescription)"
-            showAudioErrorAlert = true
-        }
-    }
-    
-    private func stopAudioPlayer() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-    }
-    
-    private func formatDistance(_ meters: Double) -> String {
-        if useKilometers {
-            return String(format: "%.1f km", meters / 1000)
-        } else {
-            return String(format: "%.1f mi", meters * 0.000621371)
-        }
-    }
-    
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let hours = Int(seconds) / 3600
-        let minutes = (Int(seconds) % 3600) / 60
-        
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
-    }
-    
-    private func formattedDuration(from start: Date, to end: Date) -> String {
-        formatDuration(end.timeIntervalSince(start))
-    }
-}
 
-// MARK: - Supporting Views
+                        struct ImportTripsView: View {
+                            let onImport: ([Trip]) -> Void
+                            @Environment(\.dismiss) private var dismiss
+                            @State private var showDocumentPicker = false
+                            
+                            var body: some View {
+                                NavigationView {
+                                    VStack(spacing: 20) {
+                                        Image(systemName: "square.and.arrow.down")
+                                            .font(.system(size: 60))
+                                            .foregroundColor(.accentColor)
+                                        
+                                        Text("Import Trips")
+                                            .font(.title.bold())
+                                        
+                                        Text("Import trips from CSV or JSON files")
+                                            .font(.body)
+                                            .foregroundColor(.secondary)
+                                            .multilineTextAlignment(.center)
+                                        
+                                        Button("Choose File", systemImage: "folder") {
+                                            showDocumentPicker = true
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.large)
+                                    }
+                                    .padding()
+                                    .navigationTitle("Import")
+                                    .navigationBarTitleDisplayMode(.inline)
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Cancel") { dismiss() }
+                                        }
+                                    }
+                                }
+                                // Document picker would be implemented here
+                            }
+                        }
 
-struct FilterRow<Content: View>: View {
-    let title: String
-    let content: Content
-    
-    init(title: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.content = content()
-    }
-    
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            Spacer()
-            content
-        }
-    }
-}
-
-struct StatBox: View {
-    let value: String
-    let label: String
-    let color: Color
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.caption2)
-                Text(value)
-                    .font(.title3.bold())
-            }
-            .foregroundColor(color)
-            
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-}
-
-struct ImageDetailView: View {
-    let image: UIImage
-    let onClose: () -> Void
-    
-    var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            
-            VStack {
-                HStack {
-                    Spacer()
-                    Button(action: onClose) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title)
-                            .foregroundColor(.white)
-                            .padding()
-                    }
-                }
-                
-                Spacer()
-                
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .padding()
-                
-                Spacer()
-            }
-        }
-    }
-}
-
-struct BulkEditView: View {
-    let trips: [Trip]
-    let onSave: ([Trip]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    @State private var newReason: String = ""
-    @State private var newPay: String = ""
-    @State private var applyReason = false
-    @State private var applyPay = false
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section("Bulk Edit \(trips.count) Trips") {
-                    Toggle("Update Category", isOn: $applyReason)
-                    if applyReason {
-                        TextField("New Category", text: $newReason)
-                    }
-                    
-                    Toggle("Update Pay", isOn: $applyPay)
-                    if applyPay {
-                        TextField("New Pay", text: $newPay)
-                            .keyboardType(.decimalPad)
-                    }
-                }
-                
-                Section {
-                    Text("This will update all \(trips.count) selected trips")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .navigationTitle("Bulk Edit")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveBulkChanges()
-                    }
-                    .disabled(!applyReason && !applyPay)
-                }
-            }
-        }
-    }
-    
-    private func saveBulkChanges() {
-        var updatedTrips = trips
-        
-        for i in 0..<updatedTrips.count {
-            var trip = updatedTrips[i]
-            if applyReason {
-                trip.reason = newReason
-            }
-            if applyPay {
-                trip.pay = newPay
-            }
-            updatedTrips[i] = trip
-        }
-        
-        onSave(updatedTrips)
-        dismiss()
-    }
-}
-
-struct ImportTripsView: View {
-    let onImport: ([Trip]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var showDocumentPicker = false
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 60))
-                    .foregroundColor(.accentColor)
-                
-                Text("Import Trips")
-                    .font(.title.bold())
-                
-                Text("Import trips from CSV or JSON files")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                
-                Button("Choose File", systemImage: "folder") {
-                    showDocumentPicker = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-            .padding()
-            .navigationTitle("Import")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-        // Document picker would be implemented here
-    }
-}
-
-// MARK: - Trip Row View
+                        // MARK: - Trip Row View
 
 struct TripRowView: View {
     let trip: Trip
@@ -1552,11 +1624,12 @@ struct TripRowView: View {
                     .animation(.easeInOut(duration: 0.2), value: isSelected)
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(isSelected ? "Deselect trip" : "Select trip")
             
-            // Main Content
+            // Main Content Button
             Button(action: onTripTap) {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Date
+                    // Header: Date/Time
                     Text(trip.startTime.formatted(date: .abbreviated, time: .shortened))
                         .font(.headline)
                         .foregroundColor(.primary)
@@ -1573,27 +1646,51 @@ struct TripRowView: View {
                             .foregroundColor(.primary)
                     }
                     
-                    // Duration
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock")
-                            .font(.caption)
-                        Text(formattedDuration)
-                            .font(.caption)
-                    }
-                    .foregroundColor(.secondary)
-                    
-                    // Average Speed (if available)
-                    if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
+                    // Secondary Info Row
+                    HStack(spacing: 12) {
+                        // Duration
                         HStack(spacing: 4) {
-                            Image(systemName: "speedometer")
+                            Image(systemName: "clock")
                                 .font(.caption)
-                            Text(AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers))
+                            Text(formattedDuration)
                                 .font(.caption)
                         }
                         .foregroundColor(.secondary)
+                        
+                        // Average Speed (if available)
+                        if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "speedometer")
+                                    .font(.caption)
+                                Text(AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers))
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        // Media & Status Indicators
+                        HStack(spacing: 6) {
+                            if !trip.photoURLs.isEmpty {
+                                Image(systemName: "photo")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                            }
+                            if !trip.audioNotes.isEmpty {
+                                Image(systemName: "waveform")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            if trip.isRecovered {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                                    .foregroundColor(.yellow)
+                            }
+                        }
                     }
                     
-                    // Category
+                    // Category Badge
                     if !trip.reason.isEmpty {
                         Text(trip.reason)
                             .font(.subheadline)
@@ -1623,118 +1720,35 @@ struct TripRowView: View {
                                 .foregroundColor(.green)
                         }
                     }
-                    
-                    // Media indicators
-                    if hasMedia || trip.isRecovered {
-                        HStack(spacing: 6) {
-                            if !trip.photoURLs.isEmpty {
-                                Image(systemName: "photo")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                            }
-                            if !trip.audioNotes.isEmpty {
-                                Image(systemName: "waveform")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
-                            }
-                            if trip.isRecovered {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.caption)
-                                    .foregroundColor(.yellow)
-                            }
-                        }
-                    }
                 }
             }
             .buttonStyle(PlainButtonStyle())
             
             // Chevron
-            Image(systemName: "chevron.right")
-                .foregroundColor(.secondary)
-                .font(.caption)
+            Button(action: onTripTap) {
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.secondary)
+                    .font(.caption)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("View trip details")
         }
         .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Trip from \(trip.startTime.formatted()) covering \(formattedDistance)")
+        .accessibilityHint("Double tap to view details")
     }
-}
-
-// MARK: - Helper
-
-struct AverageSpeedFormatter {
-    static func string(forMetersPerSecond speed: Double, useKilometers: Bool) -> String {
-        if useKilometers {
-            let kmh = speed * 3.6
-            return String(format: "%.1f km/h", kmh)
-        } else {
-            let mph = speed * 2.23694
-            return String(format: "%.1f mph", mph)
+    
+    // MARK: - Preview
+    
+#if DEBUG
+    struct TripLogView_Previews: PreviewProvider {
+        static var previews: some View {
+            TripLogView()
+                .environmentObject(TripManager())
+                .environmentObject(PremiumManager.shared)
         }
     }
-}
-
-// MARK: - Helper Structs
-
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-    
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-// For JSON export
-fileprivate struct TripExport: Codable {
-    let id: UUID
-    let date: Date
-    let distance: Double
-    let notes: String
-    let pay: String
-    let audioNotes: [URL]
-    let photoURLs: [URL]
-    let startCoordinate: CodableCoordinate?
-    let endCoordinate: CodableCoordinate?
-    let startTime: Date
-    let endTime: Date
-    let reason: String
-    let isRecovered: Bool
-    let averageSpeed: Double?
-    
-    init(trip: Trip) {
-        self.id = trip.id
-        self.date = trip.date
-        self.distance = trip.distance
-        self.notes = trip.notes
-        self.pay = trip.pay
-        self.audioNotes = trip.audioNotes
-        self.photoURLs = trip.photoURLs
-        self.startCoordinate = trip.startCoordinate
-        self.endCoordinate = trip.endCoordinate
-        self.startTime = trip.startTime
-        self.endTime = trip.endTime
-        self.reason = trip.reason
-        self.isRecovered = trip.isRecovered
-        self.averageSpeed = trip.averageSpeed
-    }
-}
-
-// MARK: - SelectedImage Wrapper
-
-struct SelectedImage: Identifiable {
-    let id = UUID()
-    let image: UIImage
-}
-
-// MARK: - Preview
-
-#if DEBUG
-struct TripLogView_Previews: PreviewProvider {
-    static var previews: some View {
-        TripLogView()
-            .environmentObject(TripManager())
-            .environmentObject(PremiumManager.shared)
-    }
-}
 #endif
-
+}

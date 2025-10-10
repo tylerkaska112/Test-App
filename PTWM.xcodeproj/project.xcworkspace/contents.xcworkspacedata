@@ -4,4 +4,22 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:ModernAddressSearchCompleter.swift">
+   </FileRef>
+   <FileRef
+      location = "group:GlassDesignComponents.swift">
+   </FileRef>
+   <FileRef
+      location = "group:TripManagerTests.swift">
+   </FileRef>
+   <FileRef
+      location = "group:LocationService.swift">
+   </FileRef>
+   <FileRef
+      location = "group:TripAppIntents.swift">
+   </FileRef>
+   <FileRef
+      location = "group:TripAnalyticsView.swift">
+   </FileRef>
 </Workspace>

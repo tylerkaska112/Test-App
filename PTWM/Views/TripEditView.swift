@@ -8,11 +8,6 @@
 import SwiftUI
 import AVFoundation
 
-enum ReasonType: String, CaseIterable, Identifiable {
-    case Business, Personal, Vacation, Photography, DoorDash, Uber, Other
-    var id: Self { self }
-}
-
 struct TripEditView: View {
     @Environment(\.dismiss) var dismiss
     @State var trip: Trip
@@ -26,20 +21,27 @@ struct TripEditView: View {
     
     @State private var selectedFullImage: UIImage? = nil
     
-    @State private var selectedReason: ReasonType
+    @State private var selectedReason: String = ""
     @State private var customReason: String = ""
+
+    @AppStorage("tripCategories") private var tripCategoriesData: String = ""
+    
+    private var supportedCategories: [String] {
+        let defaultCategories = ["Business", "Personal", "Vacation", "Photography", "DoorDash", "Uber"]
+        if let data = tripCategoriesData.data(using: .utf8),
+           let categories = try? JSONDecoder().decode([String].self, from: data),
+           !categories.isEmpty {
+            var filtered = categories.filter { $0 != "Other" }
+            filtered.append("Other")
+            return filtered
+        } else {
+            return defaultCategories + ["Other"]
+        }
+    }
 
     init(trip: Trip, onSave: @escaping (Trip) -> Void) {
         _trip = State(initialValue: trip)
         self.onSave = onSave
-        
-        if let reasonType = ReasonType(rawValue: trip.reason) {
-            _selectedReason = State(initialValue: reasonType)
-            _customReason = State(initialValue: "")
-        } else {
-            _selectedReason = State(initialValue: .Other)
-            _customReason = State(initialValue: trip.reason)
-        }
     }
 
     var body: some View {
@@ -47,13 +49,13 @@ struct TripEditView: View {
             Form {
                 Section(header: Text("Trip Reason")) {
                     Picker("Reason", selection: $selectedReason) {
-                        ForEach(ReasonType.allCases) { reason in
-                            Text(reason.rawValue).tag(reason)
+                        ForEach(supportedCategories, id: \.self) { category in
+                            Text(category).tag(category)
                         }
                     }
                     .pickerStyle(.menu)
                     
-                    if selectedReason == .Other {
+                    if selectedReason == "Other" {
                         TextField("Enter custom reason", text: $customReason)
                     }
                 }
@@ -146,17 +148,10 @@ struct TripEditView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if selectedReason == .Other {
-                            // If the user provides a non-empty custom reason, use it; otherwise, preserve the prior custom reason
-                            if !customReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                trip.reason = customReason
-                            } else if ReasonType(rawValue: trip.reason) == nil {
-                                trip.reason = trip.reason
-                            } else {
-                                trip.reason = ""
-                            }
+                        if selectedReason == "Other" {
+                            trip.reason = customReason
                         } else {
-                            trip.reason = selectedReason.rawValue
+                            trip.reason = selectedReason
                         }
                         trip.photoURLs = selectedImages.compactMap { image in
                             let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
@@ -189,11 +184,14 @@ struct TripEditView: View {
                 }
                 audioNotes = trip.audioNotes
 
-                if let reasonType = ReasonType(rawValue: trip.reason) {
-                    selectedReason = reasonType
+                if supportedCategories.contains(trip.reason) {
+                    selectedReason = trip.reason
+                    customReason = ""
+                } else if trip.reason.isEmpty {
+                    selectedReason = supportedCategories.first ?? "Business"
                     customReason = ""
                 } else {
-                    selectedReason = .Other
+                    selectedReason = "Other"
                     customReason = trip.reason
                 }
             }

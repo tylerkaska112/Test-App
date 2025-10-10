@@ -8,54 +8,6 @@ import Charts
 // Add useKilometers AppStorage here
 
 
-// MARK: - Address Search Completer
-final class AddressSearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
-    @Published var suggestions: [MKLocalSearchCompletion] = []
-    private let completer = MKLocalSearchCompleter()
-
-    override init() {
-        super.init()
-        completer.delegate = self
-        completer.resultTypes = [.address, .pointOfInterest]
-    }
-
-    func updateQuery(_ query: String) {
-        completer.queryFragment = query
-    }
-
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        DispatchQueue.main.async {
-            self.suggestions = completer.results
-        }
-    }
-
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        DispatchQueue.main.async { self.suggestions = [] }
-    }
-}
-
-// MARK: - Distance Formatter Helper
-struct DistanceFormatterHelper {
-    static func string(for miles: Double, useKilometers: Bool) -> String {
-        if useKilometers {
-            let km = miles * 1.60934
-            if km < 1 {
-                let meters = Int(km * 1000)
-                return "\(meters) m"
-            } else {
-                return String(format: "%.2f km", km)
-            }
-        } else {
-            if miles < 0.1 {
-                let feet = Int(miles * 5280)
-                return "\(feet) ft"
-            } else {
-                return String(format: "%.2f mi", miles)
-            }
-        }
-    }
-}
-
 // MARK: - Main Express Ride View
 struct ExpressRideView: View {
     @EnvironmentObject private var tripManager: TripManager

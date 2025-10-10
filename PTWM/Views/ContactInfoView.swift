@@ -19,7 +19,7 @@ struct ContactInfoView: View {
             .padding()
             .navigationTitle("Contact Info")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
                     }

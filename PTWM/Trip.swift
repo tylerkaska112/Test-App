@@ -8,7 +8,7 @@
 import Foundation
 import CoreLocation
 
-struct Trip: Identifiable, Codable {
+struct Trip: Identifiable, Codable, Equatable {
     let id: UUID
     let date: Date
     var distance: Double
@@ -23,6 +23,7 @@ struct Trip: Identifiable, Codable {
     var endTime: Date
     var reason: String
     var isRecovered: Bool = false // Indicates if this trip was recovered after app termination
+    var averageSpeed: Double? // meters per second
 
     init(
         id: UUID,
@@ -38,7 +39,8 @@ struct Trip: Identifiable, Codable {
         startTime: Date,
         endTime: Date,
         reason: String = "",
-        isRecovered: Bool = false
+        isRecovered: Bool = false,
+        averageSpeed: Double? = nil
     ) {
         self.id = id
         self.date = date
@@ -54,6 +56,7 @@ struct Trip: Identifiable, Codable {
         self.endTime = endTime
         self.reason = reason
         self.isRecovered = isRecovered
+        self.averageSpeed = averageSpeed
     }
 
     enum CodingKeys: String, CodingKey {
@@ -71,6 +74,7 @@ struct Trip: Identifiable, Codable {
         case endTime
         case reason
         case isRecovered
+        case averageSpeed
     }
 
     init(from decoder: Decoder) throws {
@@ -89,6 +93,7 @@ struct Trip: Identifiable, Codable {
         endTime = try container.decode(Date.self, forKey: .endTime)
         reason = try container.decode(String.self, forKey: .reason)
         isRecovered = try container.decodeIfPresent(Bool.self, forKey: .isRecovered) ?? false
+        averageSpeed = try container.decodeIfPresent(Double.self, forKey: .averageSpeed)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -107,5 +112,6 @@ struct Trip: Identifiable, Codable {
         try container.encode(endTime, forKey: .endTime)
         try container.encode(reason, forKey: .reason)
         try container.encode(isRecovered, forKey: .isRecovered)
+        try container.encodeIfPresent(averageSpeed, forKey: .averageSpeed)
     }
 }

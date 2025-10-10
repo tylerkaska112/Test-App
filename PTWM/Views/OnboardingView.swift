@@ -1,11 +1,16 @@
+// This view now relies on its parent to present TutorialScreenPage as a navigation destination when showTutorial becomes true.
 import SwiftUI
+import UIKit
 
 struct OnboardingView: View {
     var onDismiss: () -> Void
+    @Binding var showTutorial: Bool
     
     @State private var currentPage = 0
     @State private var firstName: String = ""
-    let totalPages = 4
+    @State private var didRequestTutorial = false
+    @AppStorage("userFirstName") private var userFirstName: String = ""
+    let totalPages = 3
     
     var body: some View {
         ZStack {
@@ -16,8 +21,10 @@ struct OnboardingView: View {
                 TabView(selection: $currentPage) {
                     WelcomePage().tag(0)
                     FirstNamePage(firstName: $firstName).tag(1)
-                    FeaturesPage().tag(2)
-                    ReadyPage(firstName: firstName).tag(3)
+                    TutorialPromptPage(onYes: {
+                        didRequestTutorial = true
+                        onDismiss()
+                    }, onNo: { onDismiss() }).tag(2)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.easeInOut, value: currentPage)
@@ -26,23 +33,12 @@ struct OnboardingView: View {
                 PageControl(currentPage: currentPage, totalPages: totalPages)
                     .padding(.bottom, 16)
                 
-                if currentPage == totalPages - 1 {
+                if currentPage != 2 {
                     Button(action: {
-                        UserDefaults.standard.set(firstName.trimmingCharacters(in: .whitespaces), forKey: "userFirstName")
-                        onDismiss()
-                    }) {
-                        Text("Get Started")
-                            .bold()
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(Color.accentColor)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                    }
-                    .padding(.horizontal)
-                    .transition(.opacity)
-                } else {
-                    Button(action: {
+                        if currentPage == 1 {
+                            userFirstName = firstName
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
                         withAnimation { currentPage += 1 }
                     }) {
                         Text("Next")
@@ -53,12 +49,17 @@ struct OnboardingView: View {
                             .foregroundColor(.white)
                             .cornerRadius(12)
                     }
+                    .disabled(currentPage == 1 && firstName.trimmingCharacters(in: .whitespaces).isEmpty)
                     .padding(.horizontal)
                     .transition(.opacity)
-                    .disabled(currentPage == 1 && firstName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .padding()
+        }
+        .onDisappear {
+            if didRequestTutorial {
+                showTutorial = true
+            }
         }
     }
 }
@@ -72,7 +73,7 @@ struct WelcomePage: View {
                 .frame(maxWidth: 120, maxHeight: 120)
                 .padding(.bottom, 12)
                 .accessibilityLabel("Waylon Logo")
-            Text("Welcome to Photo Tracker w/ Map")
+            Text("Welcome to SafelyRouted (formerly Photo Tracker w/ Map)")
                 .font(.largeTitle)
                 .fontWeight(.bold)
             Text("Easily track and relive your trips.")
@@ -101,42 +102,37 @@ struct FirstNamePage: View {
     }
 }
 
-struct FeaturesPage: View {
+struct TutorialPromptPage: View {
+    let onYes: () -> Void
+    let onNo: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("PTWM helps you track your trips with ease:")
-                .font(.headline)
-                .padding(.bottom, 8)
-            BulletPoint(text: "Track route, distance, and time of your trips.")
-            BulletPoint(text: "Add notes, pay, and photos to each trip.")
-            BulletPoint(text: "Attach audio notes with built-in recording.")
-            BulletPoint(text: "See your route on a live map.")
-            BulletPoint(text: "Save trip details for future reference.")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(12)
-        .padding(.top, 48)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-struct ReadyPage: View {
-    var firstName: String
-    var body: some View {
-        VStack(spacing: 30) {
-            Spacer()
-            Image(systemName: "map")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 70, height: 70)
-                .foregroundColor(.accentColor)
-            Text("You're ready to start tracking your trips, \(firstName.isEmpty ? "friend" : firstName)!")
+        VStack(spacing: 32) {
+            Text("Need a tutorial?")
                 .font(.title2)
-                .fontWeight(.medium)
-            Spacer()
+                .bold()
+            HStack(spacing: 20) {
+                Button(action: onYes) {
+                    Text("Yes!")
+                        .bold()
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+                Button(action: onNo) {
+                    Text("No.")
+                        .bold()
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.gray.opacity(0.4))
+                        .foregroundColor(.primary)
+                        .cornerRadius(12)
+                }
+            }
+            .padding(.horizontal)
         }
+        .padding(.top, 80)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -166,5 +162,6 @@ struct PageControl: View {
 }
 
 #Preview {
-    OnboardingView { }
+    // Note: Updated to pass a .constant(false) binding for showTutorial in preview
+    OnboardingView(onDismiss: {}, showTutorial: .constant(false))
 }

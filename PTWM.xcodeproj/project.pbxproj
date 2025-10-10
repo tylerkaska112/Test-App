@@ -11,9 +11,22 @@
 		A1D02B1D2E0E1E9800791F25 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A1E211192E37A20900C50929 /* Exceptions for "PTWM" folder in "waylon" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A1D02AD62E0DEC2D00791F25 /* waylon */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A1D02AD92E0DEC2D00791F25 /* PTWM */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1E211192E37A20900C50929 /* Exceptions for "PTWM" folder in "waylon" target */,
+			);
 			path = PTWM;
 			sourceTree = "<group>";
 		};
@@ -253,13 +266,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2GYC3F44XK;
+				DEVELOPMENT_TEAM = 357NZGSK6M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker w/ Map";
+				INFOPLIST_FILE = "$(SRCROOT)/PTWM/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SafelyRouted;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location to track miles traveled even in the background.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to track miles traveled.";
@@ -277,8 +291,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.test.waylon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.safelyrouted;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -293,13 +308,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 2GYC3F44XK;
+				DEVELOPMENT_TEAM = 357NZGSK6M;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "$(SRCROOT)/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Photo Tracker w/ Map";
+				INFOPLIST_FILE = "$(SRCROOT)/PTWM/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = SafelyRouted;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location to track miles traveled even in the background.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to track miles traveled.";
@@ -317,8 +333,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.test.waylon;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tylerkaska.safelyrouted;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;

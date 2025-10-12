@@ -1,5 +1,16 @@
 import SwiftUI
 
+struct AchievementBadge {
+    let title: String
+    let systemImage: String
+    let achieved: Bool
+    let description: String
+    let currentValue: Double
+    let targetValue: Double
+    let unlockedDate: Date?
+    let valueFormatter: (Double) -> String
+}
+
 struct AchievementsView: View {
     @EnvironmentObject var tripManager: TripManager
     @AppStorage("dailyStreak") private var dailyStreak: Int = 0
@@ -14,6 +25,8 @@ struct AchievementsView: View {
     @State private var showSpecialBadges = false
     @State private var searchText = ""
     @State private var showOnlyUnlocked = false
+    @State private var selectedAchievement: AchievementBadge?
+    @State private var showAchievementDetail = false
     
     @State private var timeUntilMidnight: TimeInterval = 0
     
@@ -59,31 +72,58 @@ struct AchievementsView: View {
     }
     
     var mileageAchievements: [AchievementBadge] {
-        // Use lifetimeMiles in miles or convert to km depending on useKilometers
         let distanceValue = useKilometers ? lifetimeMiles * 1.60934 : lifetimeMiles
+        let unit = useKilometers ? "km" : "miles"
+        
         return mileageThresholds.map { threshold, symbol, title in
-            AchievementBadge(title: title, systemImage: symbol, achieved: distanceValue >= threshold)
+            let unlocked = distanceValue >= threshold
+            let unlockDate = unlocked ? getUnlockDate(for: "mileage_\(threshold)") : nil
+            
+            return AchievementBadge(
+                title: title,
+                systemImage: symbol,
+                achieved: unlocked,
+                description: "Travel a total lifetime distance of \(title.lowercased()).",
+                currentValue: distanceValue,
+                targetValue: threshold,
+                unlockedDate: unlockDate,
+                valueFormatter: { value in
+                    String(format: "%.1f \(unit)", value)
+                }
+            )
         }
     }
     
-    // New computed property for streak badges
     var streakAchievements: [AchievementBadge] {
-        let thresholds: [(Int, String, String)] = [
-            (3, "flame", "3 Day Streak"),
-            (7, "flame.fill", "1 Week Streak"),
-            (14, "calendar", "2 Week Streak"),
-            (30, "calendar.badge.plus", "1 Month Streak"),
-            (60, "trophy", "2 Month Streak"),
-            (100, "crown", "100 Day Streak"),
-            (365, "star.circle", "1 Year Streak")
+        let thresholds: [(Int, String, String, String)] = [
+            (3, "flame", "3 Day Streak", "Complete trips on 3 consecutive days."),
+            (7, "flame.fill", "1 Week Streak", "Complete trips for 7 days in a row."),
+            (14, "calendar", "2 Week Streak", "Maintain a 14-day trip streak."),
+            (30, "calendar.badge.plus", "1 Month Streak", "Keep your streak alive for 30 days."),
+            (60, "trophy", "2 Month Streak", "An impressive 60-day streak!"),
+            (100, "crown", "100 Day Streak", "Complete trips for 100 consecutive days."),
+            (365, "star.circle", "1 Year Streak", "A full year of daily trips!")
         ]
         
-        return thresholds.map { threshold, symbol, title in
-            AchievementBadge(title: title, systemImage: symbol, achieved: longestStreak >= threshold)
+        return thresholds.map { threshold, symbol, title, desc in
+            let unlocked = longestStreak >= threshold
+            let unlockDate = unlocked ? getUnlockDate(for: "streak_\(threshold)") : nil
+            
+            return AchievementBadge(
+                title: title,
+                systemImage: symbol,
+                achieved: unlocked,
+                description: desc,
+                currentValue: Double(longestStreak),
+                targetValue: Double(threshold),
+                unlockedDate: unlockDate,
+                valueFormatter: { value in
+                    "\(Int(value)) days"
+                }
+            )
         }
     }
     
-    // Special achievements based on trip characteristics
     var specialAchievements: [AchievementBadge] {
         let totalTrips = tripManager.trips.count
         let recoveredTrips = tripManager.trips.filter { $0.isRecovered }.count
@@ -93,60 +133,171 @@ struct AchievementsView: View {
         
         var achievements: [AchievementBadge] = []
         
-        // Trip count achievements
-        let tripThresholds: [(Int, String, String)] = [
-            (1, "car", "First Trip"),
-            (10, "car.fill", "10 Trips"),
-            (50, "car.2.fill", "50 Trips"),
-            (100, "bus.fill", "Century Club"),
-            (250, "airplane", "Frequent Traveler"),
-            (500, "ferry.fill", "Road Warrior"),
-            (1000, "train.side.front.car", "Travel Master")
+        let tripThresholds: [(Int, String, String, String)] = [
+            (1, "car", "First Trip", "Complete your very first trip."),
+            (10, "car.fill", "10 Trips", "Reach 10 total trips."),
+            (50, "car.2.fill", "50 Trips", "Complete 50 trips in total."),
+            (100, "bus.fill", "Century Club", "An impressive milestone of 100 trips!"),
+            (250, "airplane", "Frequent Traveler", "You've completed 250 trips."),
+            (500, "ferry.fill", "Road Warrior", "500 trips completed!"),
+            (1000, "train.side.front.car", "Travel Master", "An incredible 1,000 trips!")
         ]
         
-        achievements += tripThresholds.map { threshold, symbol, title in
-            AchievementBadge(title: title, systemImage: symbol, achieved: totalTrips >= threshold)
+        achievements += tripThresholds.map { threshold, symbol, title, desc in
+            let unlocked = totalTrips >= threshold
+            let unlockDate = unlocked ? getUnlockDate(for: "trips_\(threshold)") : nil
+            
+            return AchievementBadge(
+                title: title,
+                systemImage: symbol,
+                achieved: unlocked,
+                description: desc,
+                currentValue: Double(totalTrips),
+                targetValue: Double(threshold),
+                unlockedDate: unlockDate,
+                valueFormatter: { value in
+                    "\(Int(value)) trips"
+                }
+            )
         }
         
-        // Documentation achievements
         if tripsWithNotes >= 10 {
-            achievements.append(AchievementBadge(title: "Storyteller", systemImage: "text.bubble", achieved: true))
-        }
-        if tripsWithPhotos >= 5 {
-            achievements.append(AchievementBadge(title: "Photographer", systemImage: "camera", achieved: true))
-        }
-        if tripsWithAudio >= 3 {
-            achievements.append(AchievementBadge(title: "Voice Logger", systemImage: "mic", achieved: true))
+            achievements.append(AchievementBadge(
+                title: "Storyteller",
+                systemImage: "text.bubble",
+                achieved: true,
+                description: "Add notes to 10 different trips.",
+                currentValue: Double(tripsWithNotes),
+                targetValue: 10,
+                unlockedDate: getUnlockDate(for: "storyteller"),
+                valueFormatter: { value in "\(Int(value)) trips with notes" }
+            ))
+        } else {
+            achievements.append(AchievementBadge(
+                title: "Storyteller",
+                systemImage: "text.bubble",
+                achieved: false,
+                description: "Add notes to 10 different trips.",
+                currentValue: Double(tripsWithNotes),
+                targetValue: 10,
+                unlockedDate: nil,
+                valueFormatter: { value in "\(Int(value)) trips with notes" }
+            ))
         }
         
-        // Recovery achievement
+        if tripsWithPhotos >= 5 {
+            achievements.append(AchievementBadge(
+                title: "Photographer",
+                systemImage: "camera",
+                achieved: true,
+                description: "Add photos to 5 different trips.",
+                currentValue: Double(tripsWithPhotos),
+                targetValue: 5,
+                unlockedDate: getUnlockDate(for: "photographer"),
+                valueFormatter: { value in "\(Int(value)) trips with photos" }
+            ))
+        } else {
+            achievements.append(AchievementBadge(
+                title: "Photographer",
+                systemImage: "camera",
+                achieved: false,
+                description: "Add photos to 5 different trips.",
+                currentValue: Double(tripsWithPhotos),
+                targetValue: 5,
+                unlockedDate: nil,
+                valueFormatter: { value in "\(Int(value)) trips with photos" }
+            ))
+        }
+        
+        if tripsWithAudio >= 3 {
+            achievements.append(AchievementBadge(
+                title: "Voice Logger",
+                systemImage: "mic",
+                achieved: true,
+                description: "Record audio notes for 3 different trips.",
+                currentValue: Double(tripsWithAudio),
+                targetValue: 3,
+                unlockedDate: getUnlockDate(for: "voice_logger"),
+                valueFormatter: { value in "\(Int(value)) trips with audio" }
+            ))
+        } else {
+            achievements.append(AchievementBadge(
+                title: "Voice Logger",
+                systemImage: "mic",
+                achieved: false,
+                description: "Record audio notes for 3 different trips.",
+                currentValue: Double(tripsWithAudio),
+                targetValue: 3,
+                unlockedDate: nil,
+                valueFormatter: { value in "\(Int(value)) trips with audio" }
+            ))
+        }
+        
         if recoveredTrips > 0 {
-            achievements.append(AchievementBadge(title: "Survivor", systemImage: "heart.fill", achieved: true))
+            achievements.append(AchievementBadge(
+                title: "Survivor",
+                systemImage: "heart.fill",
+                achieved: true,
+                description: "Successfully recover at least one trip from the trash.",
+                currentValue: Double(recoveredTrips),
+                targetValue: 1,
+                unlockedDate: getUnlockDate(for: "survivor"),
+                valueFormatter: { value in "\(Int(value)) trips recovered" }
+            ))
+        } else {
+            achievements.append(AchievementBadge(
+                title: "Survivor",
+                systemImage: "heart.fill",
+                achieved: false,
+                description: "Successfully recover at least one trip from the trash.",
+                currentValue: 0,
+                targetValue: 1,
+                unlockedDate: nil,
+                valueFormatter: { _ in "0 trips recovered" }
+            ))
         }
         
         return achievements
     }
     
-    // New computed property for time badges with thresholds in hours
     var timeAchievements: [AchievementBadge] {
-        let thresholds: [(Double, String, String)] = [
-            (5.0/60.0, "timer", "5 Minutes"),
-            (30.0/60.0, "timer", "30 Minutes"),
-            (1, "clock", "1 Hour"),
-            (2, "clock.fill", "2 Hours"),
-            (4, "hourglass", "4 Hours"),
-            (12, "hourglass.tophalf.filled", "12 Hours"),
-            (24, "hourglass.bottomhalf.filled", "24 Hours"),
-            (30, "clock.arrow.2.circlepath", "30 Hours"),
-            (48, "alarm", "48 Hours"),
-            (100, "stopwatch", "100 Hours")
+        let thresholds: [(Double, String, String, String)] = [
+            (5.0/60.0, "timer", "5 Minutes", "Spend 5 minutes driving."),
+            (30.0/60.0, "timer", "30 Minutes", "Drive for a total of 30 minutes."),
+            (1, "clock", "1 Hour", "Accumulate 1 hour of drive time."),
+            (2, "clock.fill", "2 Hours", "Reach 2 hours of total drive time."),
+            (4, "hourglass", "4 Hours", "Drive for a total of 4 hours."),
+            (12, "hourglass.tophalf.filled", "12 Hours", "Spend 12 hours on the road."),
+            (24, "hourglass.bottomhalf.filled", "24 Hours", "Complete a full day of driving!"),
+            (30, "clock.arrow.2.circlepath", "30 Hours", "Accumulate 30 hours behind the wheel."),
+            (48, "alarm", "48 Hours", "Reach 48 hours of drive time."),
+            (100, "stopwatch", "100 Hours", "An incredible 100 hours of driving!")
         ]
         
-        // Unlock badges if tripManager.lifetimeDriveHours (in hours) >= threshold
         let lifetimeHours = tripManager.lifetimeDriveHours
-        return thresholds.map { threshold, symbol, title in
-            AchievementBadge(title: title, systemImage: symbol, achieved: lifetimeHours >= threshold)
+        return thresholds.map { threshold, symbol, title, desc in
+            let unlocked = lifetimeHours >= threshold
+            let unlockDate = unlocked ? getUnlockDate(for: "time_\(threshold)") : nil
+            
+            return AchievementBadge(
+                title: title,
+                systemImage: symbol,
+                achieved: unlocked,
+                description: desc,
+                currentValue: lifetimeHours,
+                targetValue: threshold,
+                unlockedDate: unlockDate,
+                valueFormatter: { value in
+                    String(format: "%.1f hours", value)
+                }
+            )
         }
+    }
+    
+    private func getUnlockDate(for key: String) -> Date? {
+        // This would ideally be stored in UserDefaults or Core Data
+        // For now, return a placeholder date when unlocked
+        return Date()
     }
     
     private func mileageProgress() -> (progress: Double, nextTitle: String) {
@@ -280,6 +431,11 @@ struct AchievementsView: View {
                 }
             }
             .overlay(achievementNotificationOverlay)
+            .sheet(isPresented: $showAchievementDetail) {
+                if let achievement = selectedAchievement {
+                    AchievementDetailView(achievement: achievement)
+                }
+            }
             .onAppear(perform: setupTimer)
             .onDisappear(perform: cleanupTimer)
         }
@@ -337,6 +493,10 @@ struct AchievementsView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 16) {
                         ForEach(filteredAchievements(streakAchievements), id: \.title) { badge in
                             AchievementBadgeView(badge: badge, accentColor: .orange)
+                                .onTapGesture {
+                                    selectedAchievement = badge
+                                    showAchievementDetail = true
+                                }
                         }
                     }
                 }
@@ -360,6 +520,10 @@ struct AchievementsView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 16) {
                         ForEach(filteredAchievements(mileageAchievements), id: \.title) { badge in
                             AchievementBadgeView(badge: badge, accentColor: .blue)
+                                .onTapGesture {
+                                    selectedAchievement = badge
+                                    showAchievementDetail = true
+                                }
                         }
                     }
                     StatCard(label: useKilometers ? "Lifetime Kilometers" : "Lifetime Miles", value: formattedLifetimeDistance, accentColor: .blue)
@@ -384,6 +548,10 @@ struct AchievementsView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 16) {
                         ForEach(filteredAchievements(timeAchievements), id: \.title) { badge in
                             AchievementBadgeView(badge: badge, accentColor: .green)
+                                .onTapGesture {
+                                    selectedAchievement = badge
+                                    showAchievementDetail = true
+                                }
                         }
                     }
                     StatCard(label: "Lifetime Hours", value: String(format: "%.1f", tripManager.lifetimeDriveHours), accentColor: .green)
@@ -408,6 +576,10 @@ struct AchievementsView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 16) {
                         ForEach(filteredAchievements(specialAchievements), id: \.title) { badge in
                             AchievementBadgeView(badge: badge, accentColor: .purple)
+                                .onTapGesture {
+                                    selectedAchievement = badge
+                                    showAchievementDetail = true
+                                }
                         }
                     }
                     HStack(spacing: 16) {
@@ -458,14 +630,12 @@ struct AchievementsView: View {
     private func filteredAchievements<T: Collection>(_ achievements: T) -> [AchievementBadge] where T.Element == AchievementBadge {
         var filtered = Array(achievements)
         
-        // Filter by search text
         if !searchText.isEmpty {
-            filtered = filtered.filter { 
+            filtered = filtered.filter {
                 $0.title.localizedCaseInsensitiveContains(searchText)
             }
         }
         
-        // Filter by unlocked status
         if showOnlyUnlocked {
             filtered = filtered.filter { $0.achieved }
         }
@@ -474,67 +644,51 @@ struct AchievementsView: View {
     }
 }
 
-struct StatCard: View {
-    let label: String
-    let value: String
-    var accentColor: Color = .blue
-    
-    var body: some View {
-        VStack {
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-                .minimumScaleFactor(0.5)
-                .lineLimit(1)
-                .monospacedDigit()
-                .foregroundColor(accentColor)
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(minWidth: 80, maxWidth: 140, minHeight: 60, maxHeight: 80)
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(accentColor.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-
+// MARK: - Achievement Badge View
 struct AchievementBadgeView: View {
     let badge: AchievementBadge
-    var accentColor: Color = .yellow
+    let accentColor: Color
     
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: badge.systemImage)
-                .font(.system(size: 36, weight: .medium))
-                .foregroundColor(badge.achieved ? accentColor : .gray)
-                .padding(8)
+            ZStack {
+                Circle()
+                    .fill(badge.achieved ? accentColor.opacity(0.2) : Color(.systemGray6))
+                    .frame(width: 60, height: 60)
+                
+                Image(systemName: badge.systemImage)
+                    .font(.system(size: 28))
+                    .foregroundColor(badge.achieved ? accentColor : .gray)
+            }
+            
             Text(badge.title)
                 .font(.caption)
-                .fontWeight(.medium)
+                .fontWeight(.semibold)
                 .multilineTextAlignment(.center)
-                .foregroundColor(badge.achieved ? .primary : .gray)
                 .lineLimit(2)
+                .foregroundColor(badge.achieved ? .primary : .secondary)
+            
+            if !badge.achieved {
+                ProgressView(value: badge.currentValue, total: badge.targetValue)
+                    .tint(accentColor)
+                    .scaleEffect(0.8)
+            }
         }
-        .frame(minWidth: 100, maxWidth: 120, minHeight: 100, maxHeight: 120)
         .padding(12)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(badge.achieved ? accentColor.opacity(0.15) : Color(.systemGray6))
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(badge.achieved ? accentColor.opacity(0.4) : Color.clear, lineWidth: 2)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(badge.achieved ? accentColor.opacity(0.3) : Color(.systemGray4), lineWidth: 1)
         )
-        .scaleEffect(badge.achieved ? 1.0 : 0.95)
-        .animation(.easeInOut(duration: 0.2), value: badge.achieved)
     }
 }
 
+// MARK: - Disclosure Group Label
 struct DisclosureGroupLabel: View {
     let title: String
     let systemImage: String
@@ -547,67 +701,246 @@ struct DisclosureGroupLabel: View {
             Text(title)
                 .font(.headline)
             Spacer()
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .foregroundColor(.secondary)
-                .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                .font(.caption)
         }
     }
 }
 
+// MARK: - Achievement Notification View
 struct AchievementNotificationView: View {
     let achievement: AchievementBadge
     let onDismiss: () -> Void
-    @State private var isVisible = false
+    
+    @State private var isShowing = false
     
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: achievement.systemImage)
-                .font(.system(size: 50))
-                .foregroundColor(.yellow)
-                .scaleEffect(isVisible ? 1.2 : 1.0)
-                .animation(.spring(response: 0.6, dampingFraction: 0.5), value: isVisible)
+        VStack {
+            Spacer()
             
-            VStack(spacing: 8) {
-                Text("Achievement Unlocked!")
-                    .font(.headline)
-                    .fontWeight(.bold)
-                Text(achievement.title)
-                    .font(.title2)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Button("Continue") {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    onDismiss()
+            HStack(spacing: 16) {
+                Image(systemName: achievement.systemImage)
+                    .font(.system(size: 40))
+                    .foregroundColor(.yellow)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Achievement Unlocked!")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(achievement.title)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                    Text(achievement.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+                
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.title3)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.systemBackground))
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.yellow.opacity(0.5), lineWidth: 2)
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 100)
+            .offset(y: isShowing ? 0 : 200)
+            .opacity(isShowing ? 1 : 0)
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(.systemBackground))
-                .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
-        )
-        .scaleEffect(isVisible ? 1.0 : 0.8)
-        .opacity(isVisible ? 1.0 : 0.0)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-                isVisible = true
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                isShowing = true
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.4))
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                onDismiss()
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    isShowing = false
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    onDismiss()
+                }
             }
         }
     }
 }
 
-#Preview {
-    AchievementsView()
-        .environmentObject(TripManager())
+// MARK: - Achievement Detail View
+struct AchievementDetailView: View {
+    let achievement: AchievementBadge
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Achievement Icon
+                    Image(systemName: achievement.systemImage)
+                        .font(.system(size: 80, weight: .medium))
+                        .foregroundColor(achievement.achieved ? .yellow : .gray)
+                        .padding(30)
+                        .background(
+                            Circle()
+                                .fill(achievement.achieved ? Color.yellow.opacity(0.2) : Color.gray.opacity(0.1))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(achievement.achieved ? Color.yellow : Color.gray, lineWidth: 3)
+                        )
+                    
+                    // Title
+                    Text(achievement.title)
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .multilineTextAlignment(.center)
+                    
+                    // Status Badge
+                    HStack {
+                        Image(systemName: achievement.achieved ? "checkmark.circle.fill" : "lock.circle.fill")
+                        Text(achievement.achieved ? "Unlocked" : "Locked")
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(achievement.achieved ? .green : .orange)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(achievement.achieved ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
+                    )
+                    
+                    Divider()
+                        .padding(.horizontal)
+                    
+                    // Description
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Description")
+                            .font(.headline)
+                        Text(achievement.description)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    
+                    // Unlock Date or Progress
+                    if achievement.achieved {
+                        if let unlockDate = achievement.unlockedDate {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Unlocked On")
+                                    .font(.headline)
+                                HStack {
+                                    Image(systemName: "calendar")
+                                        .foregroundColor(.blue)
+                                    Text(unlockDate, style: .date)
+                                    Text("at")
+                                        .foregroundColor(.secondary)
+                                    Text(unlockDate, style: .time)
+                                }
+                                .font(.body)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .padding(.horizontal)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Progress")
+                                .font(.headline)
+                            
+                            HStack {
+                                Text(achievement.valueFormatter(achievement.currentValue))
+                                    .font(.title3)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.blue)
+                                Text("of")
+                                    .foregroundColor(.secondary)
+                                Text(achievement.valueFormatter(achievement.targetValue))
+                                    .font(.title3)
+                                    .fontWeight(.bold)
+                            }
+                            
+                            ProgressView(value: achievement.currentValue, total: achievement.targetValue)
+                                .tint(.blue)
+                            
+                            let remaining = achievement.targetValue - achievement.currentValue
+                            Text("\(achievement.valueFormatter(remaining)) remaining")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle("Achievement Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Stat Card
+struct StatCard: View {
+    let label: String
+    let value: String
+    let accentColor: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.primary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.systemBackground))
+                .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(accentColor.opacity(0.4), lineWidth: 1)
+        )
+        .overlay(
+            VStack { Spacer(minLength: 0) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(
+                    Rectangle()
+                        .fill(accentColor)
+                        .frame(width: 4)
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                    , alignment: .leading
+                )
+        )
+    }
 }

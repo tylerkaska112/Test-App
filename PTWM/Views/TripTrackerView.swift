@@ -63,10 +63,22 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         let distance = currentCenterLocation.distance(from: newCenterLocation)
 
         if isNavigating {
-            let distanceAhead: CLLocationDistance = 60
+            // Keep user location visible - offset camera center slightly ahead based on heading
+            let distanceAhead: CLLocationDistance = 100
             let centerCoordinate = coordinate(from: userLocation, distanceMeters: distanceAhead, bearingDegrees: heading)
-            let camera = MKMapCamera(lookingAtCenter: centerCoordinate, fromDistance: 350, pitch: 70, heading: heading)
+            
+            let camera = MKMapCamera(lookingAtCenter: centerCoordinate, fromDistance: 400, pitch: 60, heading: heading)
+            
+            // Continuous smooth animation - use CATransaction for butter-smooth movement
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(1.0)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
             uiView.setCamera(camera, animated: true)
+            CATransaction.commit()
+            
+            context.coordinator.lastHeading = heading
+            context.coordinator.lastUserLocation = userLocation
+            
             if shouldRecenter {
                 uiView.userTrackingMode = .followWithHeading
                 DispatchQueue.main.async { self.shouldRecenter = false }

@@ -51,11 +51,11 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("longestStreak") private var longestStreak: Int = 0
     @AppStorage("lastTripDate") private var lastTripDate: String = ""
     
-    var cityMPG: Double { 
+    var cityMPG: Double {
         let val = UserDefaults.standard.double(forKey: "cityMPG")
         return val > 0 ? val : 25.0
     }
-    var highwayMPG: Double { 
+    var highwayMPG: Double {
         let val = UserDefaults.standard.double(forKey: "highwayMPG")
         return val > 0 ? val : 32.0
     }
@@ -93,7 +93,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard mpg > 0 else { return 0 }
         return distance / mpg
     }
-
+    
     override init() {
         super.init()
         locationManager.delegate = self
@@ -192,11 +192,11 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.endTrip(withNotes: "", pay: "", start: start, end: endpoint, route: recoveredRoute, isRecovered: true, averageSpeed: nil)
         UserDefaults.standard.removeObject(forKey: currentTripKey)
     }
-
+    
     func requestLocationPermission() {
         locationManager.requestAlwaysAuthorization()
     }
-
+    
     func startTrip(isAutoStarted: Bool = false) {
         currentDistance = 0.0
         lastLocation = nil
@@ -210,7 +210,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         speedCheckTimer = nil
         UserDefaults.standard.removeObject(forKey: currentTripKey)
     }
-
+    
     /// Ends the current trip, saving it with the provided details.
     /// - Parameters:
     ///   - notes: Notes about the trip.
@@ -228,9 +228,9 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         if actualReason.isEmpty {
             actualReason = defaultTripCategory
         }
-
+        
         let actualRoute = route ?? currentRoute
-
+        
         var paddedRoute = actualRoute
         if paddedRoute.isEmpty {
             if let s = start ?? currentTripStartLocation, let e = end ?? userLocation, s != e {
@@ -247,7 +247,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         for (i, coord) in paddedRoute.enumerated() {
             print("  [\(i)] \(coord.latitude), \(coord.longitude)")
         }
-
+        
         let tripStartTime = currentTripStartTime ?? Date()
         let tripEndTime = Date()
         let actualStart = start ?? currentTripStartLocation
@@ -354,7 +354,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         speedCheckTimer?.invalidate()
         speedCheckTimer = nil
     }
-
+    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let newLocation = locations.last else { return }
         
@@ -365,7 +365,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         lastLocation = newLocation
         userLocation = newLocation.coordinate
-
+        
         // Append to route if trip started
         if currentTripStartLocation != nil {
             currentRoute.append(newLocation.coordinate)
@@ -444,7 +444,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
     }
-
+    
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
@@ -458,42 +458,42 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("Warning: Always authorization is required for background location updates.")
         }
     }
-
+    
     func updateTrip(_ updatedTrip: Trip) {
         if let index = trips.firstIndex(where: { $0.id == updatedTrip.id }) {
             trips[index] = updatedTrip
             saveTrips()
         }
     }
-
+    
     func deleteTrip(at offsets: IndexSet) {
         trips.remove(atOffsets: offsets)
         saveTrips()
     }
-
+    
     private func saveTrips() {
         if let encoded = try? JSONEncoder().encode(trips) {
             UserDefaults.standard.set(encoded, forKey: tripsKey)
         }
     }
-
+    
     private func loadTrips() {
         if let savedData = UserDefaults.standard.data(forKey: tripsKey),
            let decoded = try? JSONDecoder().decode([Trip].self, from: savedData) {
             trips = decoded
         }
     }
-
+    
     func setBackgroundImage(_ image: UIImage?) {
         backgroundImage = image
         saveBackground()
     }
-
+    
     func removeBackgroundImage() {
         backgroundImage = nil
         saveBackground()
     }
-
+    
     private func saveBackground() {
         guard let image = backgroundImage,
               let imageData = image.jpegData(compressionQuality: 0.8) else {
@@ -502,7 +502,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         UserDefaults.standard.set(imageData, forKey: backgroundKey)
     }
-
+    
     private func loadBackground() {
         if let imageData = UserDefaults.standard.data(forKey: backgroundKey),
            let image = UIImage(data: imageData) {
@@ -531,6 +531,37 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
            let decoded = try? JSONDecoder().decode([FavoriteAddress].self, from: data) {
             favoriteAddresses = decoded
         }
+    }
+    
+    func hasLocationPermission() -> Bool {
+        let status: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            status = locationManager.authorizationStatus
+        } else {
+            status = CLLocationManager.authorizationStatus()
+        }
+        switch status {
+        case .authorizedAlways, .authorizedWhenInUse:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    func refreshIfNeeded() {
+        // For now, ensure trips and favorites are loaded if empty.
+        if trips.isEmpty { loadTrips() }
+        if favoriteAddresses.isEmpty { loadFavoriteAddresses() }
+        // Optionally refresh background image from storage if nil
+        if backgroundImage == nil { loadBackground() }
+    }
+    
+    func saveCurrentState() {
+        saveTrips()
+        saveFavoriteAddresses()
+        saveBackground()
+        // Also persist any ongoing trip state for safety
+        autosaveOngoingTripState()
     }
 }
 

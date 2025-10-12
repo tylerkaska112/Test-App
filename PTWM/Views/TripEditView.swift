@@ -3,6 +3,7 @@
 //  waylon
 //
 //  Created by tyler kaska on 6/26/25.
+//  Enhanced version with improvements and additional features
 //
 
 import SwiftUI
@@ -15,16 +16,33 @@ struct TripEditView: View {
 
     @State private var selectedImages: [UIImage] = []
     @State private var showImagePicker = false
+    @State private var imagePickerSourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var audioNotes: [URL] = []
     @State private var isRecording = false
+    @State private var recordingDuration: TimeInterval = 0
+    @State private var recordingTimer: Timer? = nil
     @State private var audioRecorder: AVAudioRecorder? = nil
+    @State private var audioPlayer: AVAudioPlayer? = nil
+    @State private var playingAudioURL: URL? = nil
     
     @State private var selectedFullImage: UIImage? = nil
+    @State private var showDeletePhotoAlert = false
+    @State private var photoToDelete: UIImage? = nil
+    @State private var showDeleteAudioAlert = false
+    @State private var audioToDelete: URL? = nil
+    @State private var showPhotoSourcePicker = false
     
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
+    @State private var isSaving = false
+    @State private var showValidationError = false
+    @State private var validationMessage = ""
 
     @AppStorage("tripCategories") private var tripCategoriesData: String = ""
+    
+    private let maxNotesLength = 500
+    private let maxPayLength = 50
+    private let maxCustomReasonLength = 100
     
     private var supportedCategories: [String] {
         let defaultCategories = ["Business", "Personal", "Vacation", "Photography", "DoorDash", "Uber"]
@@ -38,6 +56,13 @@ struct TripEditView: View {
             return defaultCategories + ["Other"]
         }
     }
+    
+    private var isFormValid: Bool {
+        if selectedReason == "Other" {
+            return !customReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !selectedReason.isEmpty
+    }
 
     init(trip: Trip, onSave: @escaping (Trip) -> Void) {
         _trip = State(initialValue: trip)
@@ -47,6 +72,7 @@ struct TripEditView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // MARK: - Trip Reason Section
                 Section(header: Text("Trip Reason")) {
                     Picker("Reason", selection: $selectedReason) {
                         ForEach(supportedCategories, id: \.self) { category in
@@ -54,170 +80,615 @@ struct TripEditView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .accessibilityLabel("Trip reason picker")
                     
                     if selectedReason == "Other" {
-                        TextField("Enter custom reason", text: $customReason)
-                    }
-                }
-                
-                Section(header: Text("Notes")) {
-                    TextField("Notes", text: $trip.notes)
-                }
-                
-                Section(header: Text("Pay")) {
-                    TextField("Pay", text: $trip.pay)
-                }
-                
-                Section(header: Text("Photos")) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack {
-                            ForEach(selectedImages, id: \.self) { img in
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .frame(width: 70, height: 70)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    Button {
-                                        selectedImages.removeAll { $0 == img }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.red)
-                                            .background(Color.white)
-                                            .clipShape(Circle())
-                                            .padding(6)
-                                    }
-                                    .offset(x: 12, y: -12)
-                                    .zIndex(1)
-                                    .contentShape(Rectangle())
-                                }
-                            }
-                            Button {
-                                showImagePicker = true
-                            } label: {
-                                Image(systemName: "plus.circle.fill").font(.largeTitle)
-                            }
-                        }
-                    }
-                }
-                
-                Section(header: Text("Audio Notes")) {
-                    Button(isRecording ? "Stop Recording" : "Record Audio") {
-                        if isRecording {
-                            audioRecorder?.stop()
-                            if let url = audioRecorder?.url {
-                                audioNotes.append(url)
-                            }
-                            isRecording = false
-                        } else {
-                            let docDir = FileManager.default.temporaryDirectory
-                            let url = docDir.appendingPathComponent(UUID().uuidString + ".m4a")
-                            let settings = [
-                                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                                AVSampleRateKey: 12000,
-                                AVNumberOfChannelsKey: 1,
-                                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-                            ]
-                            audioRecorder = try? AVAudioRecorder(url: url, settings: settings)
-                            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                                if granted {
-                                    DispatchQueue.main.async {
-                                        audioRecorder?.record()
-                                        isRecording = true
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("Enter custom reason", text: $customReason)
+                                .onChange(of: customReason) { oldValue, newValue in
+                                    if newValue.count > maxCustomReasonLength {
+                                        customReason = String(newValue.prefix(maxCustomReasonLength))
                                     }
                                 }
-                            }
-                        }
-                    }
-                    ForEach(audioNotes, id: \.self) { url in
-                        HStack {
-                            Text(url.lastPathComponent)
+                                .accessibilityLabel("Custom trip reason")
+                            
+                            Text("\(customReason.count)/\(maxCustomReasonLength)")
                                 .font(.caption)
-                            Spacer()
+                                .foregroundColor(customReason.count >= maxCustomReasonLength ? .red : .secondary)
+                        }
+                    }
+                }
+                
+                // MARK: - Notes Section
+                Section(header: Text("Notes")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Add trip notes", text: $trip.notes, axis: .vertical)
+                            .lineLimit(3...6)
+                            .onChange(of: trip.notes) { oldValue, newValue in
+                                if newValue.count > maxNotesLength {
+                                    trip.notes = String(newValue.prefix(maxNotesLength))
+                                }
+                            }
+                            .accessibilityLabel("Trip notes")
+                        
+                        Text("\(trip.notes.count)/\(maxNotesLength)")
+                            .font(.caption)
+                            .foregroundColor(trip.notes.count >= maxNotesLength ? .red : .secondary)
+                    }
+                }
+                
+                // MARK: - Pay Section
+                Section(header: Text("Pay")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Enter amount", text: $trip.pay)
+                            .keyboardType(.decimalPad)
+                            .onChange(of: trip.pay) { oldValue, newValue in
+                                if newValue.count > maxPayLength {
+                                    trip.pay = String(newValue.prefix(maxPayLength))
+                                }
+                            }
+                            .accessibilityLabel("Payment amount")
+                        
+                        if !trip.pay.isEmpty {
+                            Text("\(trip.pay.count)/\(maxPayLength)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                // MARK: - Photos Section
+                Section(header: HStack {
+                    Text("Photos")
+                    Spacer()
+                    if !selectedImages.isEmpty {
+                        Text("\(selectedImages.count)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            if !selectedImages.isEmpty {
+                                ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, img in
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(uiImage: img)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                            .onTapGesture {
+                                                selectedFullImage = img
+                                            }
+                                            .accessibilityLabel("Photo \(index + 1)")
+                                            .accessibilityHint("Tap to view full size")
+                                        
+                                        Button {
+                                            photoToDelete = img
+                                            showDeletePhotoAlert = true
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.white)
+                                                .background(Color.red)
+                                                .clipShape(Circle())
+                                        }
+                                        .offset(x: 8, y: -8)
+                                        .accessibilityLabel("Delete photo")
+                                    }
+                                }
+                            }
+                            
                             Button {
-                                audioNotes.removeAll { $0 == url }
+                                showPhotoSourcePicker = true
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.largeTitle)
+                                        .foregroundColor(.accentColor)
+                                    Text("Add Photo")
+                                        .font(.caption)
+                                }
+                                .frame(width: 80, height: 80)
+                                .background(Color.secondary.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .accessibilityLabel("Add photo")
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                
+                // MARK: - Audio Notes Section
+                Section(header: HStack {
+                    Text("Audio Notes")
+                    Spacer()
+                    if !audioNotes.isEmpty {
+                        Text("\(audioNotes.count)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }) {
+                    Button {
+                        if isRecording {
+                            stopRecording()
+                        } else {
+                            startRecording()
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                                .foregroundColor(isRecording ? .red : .accentColor)
+                            Text(isRecording ? "Stop Recording" : "Record Audio Note")
+                            if isRecording {
+                                Spacer()
+                                Text(formatDuration(recordingDuration))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityLabel(isRecording ? "Stop recording" : "Start recording")
+                    
+                    if audioNotes.isEmpty && !isRecording {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "waveform")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.secondary)
+                                Text("No audio notes")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                            Spacer()
+                        }
+                    }
+                    
+                    ForEach(Array(audioNotes.enumerated()), id: \.offset) { index, url in
+                        HStack {
+                            Button {
+                                toggleAudioPlayback(url: url)
+                            } label: {
+                                Image(systemName: playingAudioURL == url ? "pause.circle.fill" : "play.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .accessibilityLabel(playingAudioURL == url ? "Pause audio" : "Play audio")
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Audio Note \(index + 1)")
+                                    .font(.subheadline)
+                                if let duration = getAudioDuration(url: url) {
+                                    Text(formatDuration(duration))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Button {
+                                audioToDelete = url
+                                showDeleteAudioAlert = true
                             } label: {
                                 Image(systemName: "trash")
                                     .foregroundColor(.red)
                             }
+                            .accessibilityLabel("Delete audio note")
                         }
                     }
                 }
-                
             }
             .navigationTitle("Edit Trip")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if selectedReason == "Other" {
-                            trip.reason = customReason
-                        } else {
-                            trip.reason = selectedReason
-                        }
-                        trip.photoURLs = selectedImages.compactMap { image in
-                            let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
-                            if let data = image.jpegData(compressionQuality: 0.8) {
-                                try? data.write(to: url)
-                                return url
-                            }
-                            return nil
-                        }
-                        trip.audioNotes = audioNotes
-                        onSave(trip)
-                        dismiss()
+                        saveTrip()
                     }
+                    .disabled(!isFormValid || isSaving)
+                    .accessibilityLabel("Save trip")
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .disabled(isSaving)
+                    .accessibilityLabel("Cancel editing")
+                }
+                
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") {
+                            hideKeyboard()
+                        }
+                    }
+                }
+            }
+            .overlay {
+                if isSaving {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+                        ProgressView("Saving...")
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(10)
+                    }
                 }
             }
             .sheet(isPresented: $showImagePicker) {
-                ImagePicker { img in
+                TripImagePicker(sourceType: imagePickerSourceType) { img in
                     selectedImages.append(img)
                 }
             }
-            .onAppear {
-                selectedImages = trip.photoURLs.compactMap { url in
-                    if let data = try? Data(contentsOf: url), let img = UIImage(data: data) { return img }
-                    return nil
+            .confirmationDialog("Add Photo", isPresented: $showPhotoSourcePicker, titleVisibility: .visible) {
+                Button("Take Photo") {
+                    imagePickerSourceType = .camera
+                    showImagePicker = true
                 }
-                audioNotes = trip.audioNotes
+                Button("Choose from Library") {
+                    imagePickerSourceType = .photoLibrary
+                    showImagePicker = true
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .sheet(item: $selectedFullImage) { image in
+                FullImageView(image: image) {
+                    selectedFullImage = nil
+                }
+            }
+            .alert("Delete Photo?", isPresented: $showDeletePhotoAlert) {
+                Button("Delete", role: .destructive) {
+                    if let img = photoToDelete {
+                        selectedImages.removeAll { $0 == img }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This photo will be removed from the trip.")
+            }
+            .alert("Delete Audio Note?", isPresented: $showDeleteAudioAlert) {
+                Button("Delete", role: .destructive) {
+                    if let url = audioToDelete {
+                        stopAudioPlayback()
+                        audioNotes.removeAll { $0 == url }
+                        cleanupAudioFile(url: url)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This audio note will be permanently deleted.")
+            }
+            .alert("Validation Error", isPresented: $showValidationError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(validationMessage)
+            }
+            .onAppear {
+                setupView()
+            }
+            .onDisappear {
+                cleanup()
+            }
+        }
+    }
+    
+    // MARK: - Setup & Cleanup
+    
+    private func setupView() {
+        selectedImages = trip.photoURLs.compactMap { url in
+            guard let data = try? Data(contentsOf: url),
+                  let img = UIImage(data: data) else { return nil }
+            return img
+        }
+        audioNotes = trip.audioNotes
 
-                if supportedCategories.contains(trip.reason) {
-                    selectedReason = trip.reason
-                    customReason = ""
-                } else if trip.reason.isEmpty {
-                    selectedReason = supportedCategories.first ?? "Business"
-                    customReason = ""
+        if supportedCategories.contains(trip.reason) {
+            selectedReason = trip.reason
+            customReason = ""
+        } else if trip.reason.isEmpty {
+            selectedReason = supportedCategories.first ?? "Business"
+            customReason = ""
+        } else {
+            selectedReason = "Other"
+            customReason = trip.reason
+        }
+        
+        configureAudioSession()
+    }
+    
+    private func cleanup() {
+        recordingTimer?.invalidate()
+        audioRecorder?.stop()
+        audioPlayer?.stop()
+        deactivateAudioSession()
+    }
+    
+    // MARK: - Audio Session Management
+    
+    private func configureAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to configure audio session: \(error)")
+        }
+    }
+    
+    private func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false)
+        } catch {
+            print("Failed to deactivate audio session: \(error)")
+        }
+    }
+    
+    // MARK: - Audio Recording
+    
+    private func startRecording() {
+        let docDir = FileManager.default.temporaryDirectory
+        let url = docDir.appendingPathComponent(UUID().uuidString + ".m4a")
+        let settings = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44100,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                if granted {
+                    do {
+                        audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+                        audioRecorder?.record()
+                        isRecording = true
+                        recordingDuration = 0
+                        startRecordingTimer()
+                    } catch {
+                        print("Failed to start recording: \(error)")
+                    }
                 } else {
-                    selectedReason = "Other"
-                    customReason = trip.reason
+                    validationMessage = "Microphone access is required to record audio notes."
+                    showValidationError = true
                 }
             }
         }
-        .sheet(item: $selectedFullImage) { image in
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") {
-                        selectedFullImage = nil
-                    }
-                    .padding()
-                    .background(Color.white.opacity(0.7))
-                    .cornerRadius(10)
+    }
+    
+    private func stopRecording() {
+        recordingTimer?.invalidate()
+        audioRecorder?.stop()
+        if let url = audioRecorder?.url {
+            audioNotes.append(url)
+        }
+        isRecording = false
+        recordingDuration = 0
+    }
+    
+    private func startRecordingTimer() {
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
+        }
+    }
+    
+    // MARK: - Audio Playback
+    
+    private func toggleAudioPlayback(url: URL) {
+        if playingAudioURL == url {
+            stopAudioPlayback()
+        } else {
+            playAudio(url: url)
+        }
+    }
+    
+    private func playAudio(url: URL) {
+        do {
+            stopAudioPlayback()
+            audioPlayer = try AVAudioPlayer(contentsOf: url)
+            audioPlayer?.prepareToPlay()
+            audioPlayer?.play()
+            playingAudioURL = url
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + (audioPlayer?.duration ?? 0)) {
+                if playingAudioURL == url {
+                    playingAudioURL = nil
                 }
+            }
+        } catch {
+            print("Failed to play audio: \(error)")
+        }
+    }
+    
+    private func stopAudioPlayback() {
+        audioPlayer?.stop()
+        playingAudioURL = nil
+    }
+    
+    private func getAudioDuration(url: URL) -> TimeInterval? {
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            return player.duration
+        } catch {
+            return nil
+        }
+    }
+    
+    // MARK: - Save Trip
+    
+    private func saveTrip() {
+        guard isFormValid else {
+            validationMessage = "Please fill in all required fields."
+            showValidationError = true
+            return
+        }
+        
+        isSaving = true
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Clean up old photo files
+            for oldURL in trip.photoURLs {
+                try? FileManager.default.removeItem(at: oldURL)
+            }
+            
+            // Set trip reason
+            if selectedReason == "Other" {
+                trip.reason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                trip.reason = selectedReason
+            }
+            
+            // Save images with compression
+            trip.photoURLs = selectedImages.compactMap { image in
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+                guard let data = image.jpegData(compressionQuality: 0.8) else { return nil }
+                do {
+                    try data.write(to: url)
+                    return url
+                } catch {
+                    print("Failed to save image: \(error)")
+                    return nil
+                }
+            }
+            
+            // Save audio notes
+            trip.audioNotes = audioNotes
+            
+            DispatchQueue.main.async {
+                isSaving = false
+                onSave(trip)
+                dismiss()
+            }
+        }
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func cleanupAudioFile(url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+// MARK: - Full Image View
+
+struct FullImageView: View {
+    let image: UIImage
+    let onClose: () -> Void
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white)
+                            .padding()
+                    }
+                    .accessibilityLabel("Close image")
+                }
+                
+                Spacer()
+                
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(scale)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                scale = lastScale * value
+                            }
+                            .onEnded { _ in
+                                lastScale = scale
+                                if scale < 1.0 {
+                                    withAnimation {
+                                        scale = 1.0
+                                        lastScale = 1.0
+                                    }
+                                } else if scale > 3.0 {
+                                    withAnimation {
+                                        scale = 3.0
+                                        lastScale = 3.0
+                                    }
+                                }
+                            }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation {
+                            if scale > 1.0 {
+                                scale = 1.0
+                                lastScale = 1.0
+                            } else {
+                                scale = 2.0
+                                lastScale = 2.0
+                            }
+                        }
+                    }
+                
+                Spacer()
             }
         }
     }
 }
 
+// MARK: - UIImage Extension
+
 extension UIImage: Identifiable {
-    public var id: String { self.pngData()?.base64EncodedString() ?? UUID().uuidString }
+    public var id: String {
+        self.pngData()?.base64EncodedString() ?? UUID().uuidString
+    }
+}
+
+// MARK: - TripImagePicker
+
+struct TripImagePicker: UIViewControllerRepresentable {
+    var sourceType: UIImagePickerController.SourceType = .photoLibrary
+    var onImagePicked: (UIImage) -> Void
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = sourceType
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: TripImagePicker
+        
+        init(_ parent: TripImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onImagePicked(image)
+            }
+            picker.dismiss(animated: true)
+        }
+    }
 }

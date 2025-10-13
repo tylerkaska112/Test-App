@@ -5,25 +5,47 @@
 //  Created by tyler kaska on 6/26/25.
 //
 
-
 import SwiftUI
 
 struct BackgroundWrapper<Content: View>: View {
     @EnvironmentObject var tripManager: TripManager
-    let content: () -> Content
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
 
     var body: some View {
         ZStack {
-            if let image = tripManager.backgroundImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .ignoresSafeArea()
-            } else {
-                Color(.systemBackground)
-                    .ignoresSafeArea()
-            }
-            content()
+            backgroundLayer
+            content
+        }
+    }
+    
+    @ViewBuilder
+    private var backgroundLayer: some View {
+        if let image = tripManager.backgroundImage {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+        } else {
+            Color(.systemBackground)
+                .ignoresSafeArea()
         }
     }
 }
 
+// MARK: - Preview Provider
+#Preview {
+    BackgroundWrapper {
+        VStack {
+            Text("Sample Content")
+                .font(.largeTitle)
+            Text("Background wrapper demo")
+                .foregroundStyle(.secondary)
+        }
+    }
+    .environmentObject(TripManager())
+}

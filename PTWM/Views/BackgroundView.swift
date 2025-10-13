@@ -4,8 +4,9 @@ struct BackgroundView: View {
     @EnvironmentObject var tripManager: TripManager
     @Environment(\.dismiss) var dismiss
     @State private var showingImagePicker = false
-    @State private var inputImage: UIImage?
-
+    @State private var showError = false
+    @State private var errorMessage = ""
+    
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
@@ -25,12 +26,12 @@ struct BackgroundView: View {
                         )
                         .cornerRadius(10)
                 }
-
+                
                 Button("Change Background Image") {
                     showingImagePicker = true
                 }
                 .buttonStyle(.borderedProminent)
-
+                
                 if tripManager.backgroundImage != nil {
                     Button("Remove Background Image") {
                         tripManager.removeBackgroundImage()
@@ -38,7 +39,7 @@ struct BackgroundView: View {
                     .buttonStyle(.bordered)
                     .tint(.red)
                 }
-
+                
                 Spacer()
             }
             .padding()
@@ -50,11 +51,21 @@ struct BackgroundView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingImagePicker) {
-                ImagePicker { image in
-                    inputImage = image
-                    tripManager.setBackgroundImage(image)
+            .sheet(isPresented: $showingImagePicker) {  // Changed from $showImagePicker
+                ImagePicker.photoLibrary { result in
+                    switch result {
+                    case .success(let image):
+                        tripManager.backgroundImage = image
+                    case .failure(let error):
+                        errorMessage = error.localizedDescription
+                        showError = true
+                    }
                 }
+            }
+            .alert("Image Selection Error", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
             }
         }
     }

@@ -22,20 +22,78 @@ struct Trip: Identifiable, Codable, Equatable {
     var startTime: Date
     var endTime: Date
     var reason: String
-    var isRecovered: Bool = false // Indicates if this trip was recovered after app termination
-    var averageSpeed: Double? // meters per second
-
+    var isRecovered: Bool
+    var averageSpeed: Double?
+    
+    // MARK: - Computed Properties
+    
+    /// Duration of the trip in seconds
+    var duration: TimeInterval {
+        endTime.timeIntervalSince(startTime)
+    }
+    
+    /// Formatted duration string (e.g., "1h 23m")
+    var formattedDuration: String {
+        let hours = Int(duration) / 3600
+        let minutes = (Int(duration) % 3600) / 60
+        
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+    
+    /// Distance in miles (converted from meters)
+    var distanceInMiles: Double {
+        distance * 0.000621371
+    }
+    
+    /// Distance in kilometers (converted from meters)
+    var distanceInKilometers: Double {
+        distance / 1000.0
+    }
+    
+    /// Formatted distance string in miles
+    var formattedDistance: String {
+        String(format: "%.2f mi", distanceInMiles)
+    }
+    
+    /// Average speed in miles per hour
+    var averageSpeedMPH: Double? {
+        guard let speed = averageSpeed else { return nil }
+        return speed * 2.23694 // Convert m/s to mph
+    }
+    
+    /// Formatted average speed string
+    var formattedAverageSpeed: String? {
+        guard let mph = averageSpeedMPH else { return nil }
+        return String(format: "%.1f mph", mph)
+    }
+    
+    /// Whether this trip has any media attached
+    var hasMedia: Bool {
+        !audioNotes.isEmpty || !photoURLs.isEmpty
+    }
+    
+    /// Total number of media items
+    var mediaCount: Int {
+        audioNotes.count + photoURLs.count
+    }
+    
+    // MARK: - Initialization
+    
     init(
-        id: UUID,
-        date: Date,
+        id: UUID = UUID(),
+        date: Date = Date(),
         distance: Double,
-        notes: String,
-        pay: String,
-        audioNotes: [URL],
+        notes: String = "",
+        pay: String = "",
+        audioNotes: [URL] = [],
         photoURLs: [URL] = [],
-        startCoordinate: CodableCoordinate?,
-        endCoordinate: CodableCoordinate?,
-        routeCoordinates: [CodableCoordinate],
+        startCoordinate: CodableCoordinate? = nil,
+        endCoordinate: CodableCoordinate? = nil,
+        routeCoordinates: [CodableCoordinate] = [],
         startTime: Date,
         endTime: Date,
         reason: String = "",
@@ -58,60 +116,69 @@ struct Trip: Identifiable, Codable, Equatable {
         self.isRecovered = isRecovered
         self.averageSpeed = averageSpeed
     }
+}
 
-    enum CodingKeys: String, CodingKey {
-        case id
-        case date
-        case distance
-        case notes
-        case pay
-        case audioNotes
-        case photoURLs
-        case startCoordinate
-        case endCoordinate
-        case routeCoordinates
-        case startTime
-        case endTime
-        case reason
-        case isRecovered
-        case averageSpeed
+// MARK: - Trip Extensions
+
+extension Trip {
+    /// Creates a sample trip for previews and testing
+    static var sample: Trip {
+        Trip(
+            distance: 25000, // 25 km
+            notes: "Regular commute to office",
+            pay: "$45.00",
+            startTime: Date().addingTimeInterval(-3600),
+            endTime: Date(),
+            reason: "Business",
+            averageSpeed: 15.0
+        )
     }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        date = try container.decode(Date.self, forKey: .date)
-        distance = try container.decode(Double.self, forKey: .distance)
-        notes = try container.decode(String.self, forKey: .notes)
-        pay = try container.decode(String.self, forKey: .pay)
-        audioNotes = try container.decode([URL].self, forKey: .audioNotes)
-        photoURLs = try container.decode([URL].self, forKey: .photoURLs)
-        startCoordinate = try container.decodeIfPresent(CodableCoordinate.self, forKey: .startCoordinate)
-        endCoordinate = try container.decodeIfPresent(CodableCoordinate.self, forKey: .endCoordinate)
-        routeCoordinates = try container.decode([CodableCoordinate].self, forKey: .routeCoordinates)
-        startTime = try container.decode(Date.self, forKey: .startTime)
-        endTime = try container.decode(Date.self, forKey: .endTime)
-        reason = try container.decode(String.self, forKey: .reason)
-        isRecovered = try container.decodeIfPresent(Bool.self, forKey: .isRecovered) ?? false
-        averageSpeed = try container.decodeIfPresent(Double.self, forKey: .averageSpeed)
+    
+    /// Validates that the trip data is consistent
+    func isValid() -> Bool {
+        guard endTime > startTime else { return false }
+        guard distance >= 0 else { return false }
+        return true
     }
+    
+    /// Returns a copy of the trip with updated notes
+    func withNotes(_ newNotes: String) -> Trip {
+        var copy = self
+        copy.notes = newNotes
+        return copy
+    }
+    
+    /// Returns a copy of the trip with an added photo
+    func addingPhoto(_ photoURL: URL) -> Trip {
+        var copy = self
+        copy.photoURLs.append(photoURL)
+        return copy
+    }
+    
+    /// Returns a copy of the trip with an added audio note
+    func addingAudioNote(_ audioURL: URL) -> Trip {
+        var copy = self
+        copy.audioNotes.append(audioURL)
+        return copy
+    }
+}
 
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(date, forKey: .date)
-        try container.encode(distance, forKey: .distance)
-        try container.encode(notes, forKey: .notes)
-        try container.encode(pay, forKey: .pay)
-        try container.encode(audioNotes, forKey: .audioNotes)
-        try container.encode(photoURLs, forKey: .photoURLs)
-        try container.encodeIfPresent(startCoordinate, forKey: .startCoordinate)
-        try container.encodeIfPresent(endCoordinate, forKey: .endCoordinate)
-        try container.encode(routeCoordinates, forKey: .routeCoordinates)
-        try container.encode(startTime, forKey: .startTime)
-        try container.encode(endTime, forKey: .endTime)
-        try container.encode(reason, forKey: .reason)
-        try container.encode(isRecovered, forKey: .isRecovered)
-        try container.encodeIfPresent(averageSpeed, forKey: .averageSpeed)
+// MARK: - Sorting and Filtering
+
+extension Trip {
+    static func sortedByDate(_ trips: [Trip], ascending: Bool = false) -> [Trip] {
+        trips.sorted { ascending ? $0.date < $1.date : $0.date > $1.date }
+    }
+    
+    static func filterByDateRange(_ trips: [Trip], from startDate: Date, to endDate: Date) -> [Trip] {
+        trips.filter { $0.date >= startDate && $0.date <= endDate }
+    }
+    
+    static func totalDistance(for trips: [Trip]) -> Double {
+        trips.reduce(0) { $0 + $1.distance }
+    }
+    
+    static func totalDuration(for trips: [Trip]) -> TimeInterval {
+        trips.reduce(0) { $0 + $1.duration }
     }
 }

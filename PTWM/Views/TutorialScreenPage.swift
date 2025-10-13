@@ -38,364 +38,225 @@ struct TutorialScreenPage: View {
     }
 }
 
+// MARK: - Page 1: Main Screen
+
 private struct TutorialTabPage1: View {
     @Binding var selectedTab: Int
     @State private var isImageEnlarged = false
     
     var body: some View {
-        VStack {
-            HStack {
-                Button("Previous") {
-                    if selectedTab > 0 {
-                        selectedTab -= 1
-                    }
-                }
-                .disabled(selectedTab == 0)
-
-                Spacer()
-
-                Button("Next") {
-                    if selectedTab < 4 {
-                        selectedTab += 1
-                    }
-                }
-                .disabled(selectedTab == 4)
-            }
-            .padding(.top, 24)
-            .padding(.horizontal)
+        VStack(spacing: 0) {
+            // Navigation Buttons
+            NavigationButtonsView(selectedTab: $selectedTab, isLastPage: false)
             
-            Button(action: { isImageEnlarged = true }) {
-                Image("NavigationScreen")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 380, maxHeight: 380)
-                    .padding(.vertical, 12)
-                    .accessibilityLabel("Tutorial page 1 image")
-            }
-            .buttonStyle(PlainButtonStyle())
+            // Image Section
+            ImageSection(
+                imageName: "NavigationScreen",
+                isEnlarged: $isImageEnlarged,
+                accessibilityLabel: "Tutorial page 1 image"
+            )
             
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.accentColor)
-                Text("Click image to enlarge")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
-            
+            // Content Section
             ScrollView {
-                VStack(spacing: 24) {
-                    Text("Main Screen (Map view)")
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Main Screen (Map View)")
                         .font(.title)
-                        .bold()
-                    Text("""
-- Red, opens favorite addresses screen to allow users to pick a saved address for easy navigation
-- Cyan, recenters the map view onto the users current location, 1 press recenters but doesn’t enable following, 2 presses enables automatic location following making the view always have the users location in the center of the screen
-- Dark green, text box where the user can type in any address for navigation
-- Light green, shows the users traveled distance
-- Yellow, show the arrival eta to the users inputted address, will not be visible if there is no address typed in
-- Light blue, starts a trip or navigation
-- Dark blue, take the user to the main screen with the map
-- Orange, takes the user to the trip log screen with all the trip logs
-- Pink, takes the user to the mileage report screen with the mileage and time graphs
-- White, takes the user to the settings page
-""")
-                    .font(.body)
-                    Spacer()
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+                    
+                    FeatureGroup(title: "Navigation Controls") {
+                        FeatureItem(color: "Red", description: "Opens favorite addresses screen for quick access to saved locations")
+                        FeatureItem(color: "Cyan", description: "Recenters map view: 1 press = recenter, 2 presses = auto-follow mode")
+                        FeatureItem(color: "Dark green", description: "Address input field for navigation destination")
+                    }
+                    
+                    FeatureGroup(title: "Trip Information") {
+                        FeatureItem(color: "Light green", description: "Displays traveled distance")
+                        FeatureItem(color: "Yellow", description: "Shows estimated arrival time (visible only with active destination)")
+                        FeatureItem(color: "Light blue", description: "Start trip or navigation")
+                    }
+                    
+                    FeatureGroup(title: "Main Navigation") {
+                        FeatureItem(color: "Dark blue", description: "Map view (current screen)")
+                        FeatureItem(color: "Orange", description: "Trip log screen with all recorded trips")
+                        FeatureItem(color: "Pink", description: "Mileage report with graphs and statistics")
+                        FeatureItem(color: "White", description: "Settings page")
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
         }
         .fullScreenCover(isPresented: $isImageEnlarged) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Image("NavigationScreen")
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") { isImageEnlarged = false }
-                        .font(.title3)
-                        .padding()
-                        .background(Color.white.opacity(0.7))
-                        .cornerRadius(10)
-                }
-            }
+            ImageEnlargedView(imageName: "NavigationScreen", isPresented: $isImageEnlarged)
         }
     }
 }
+
+// MARK: - Page 2: Navigation Screen
 
 private struct TutorialTabPage2: View {
     @Binding var selectedTab: Int
-    @State private var isImageEnlarged2 = false
+    @State private var isImageEnlarged = false
     
     var body: some View {
-        VStack {
-            HStack {
-                Button("Previous") {
-                    if selectedTab > 0 {
-                        selectedTab -= 1
-                    }
-                }
-                .disabled(selectedTab == 0)
-
-                Spacer()
-
-                Button("Next") {
-                    if selectedTab < 4 {
-                        selectedTab += 1
-                    }
-                }
-                .disabled(selectedTab == 4)
-            }
-            .padding(.top, 24)
-            .padding(.horizontal)
+        VStack(spacing: 0) {
+            NavigationButtonsView(selectedTab: $selectedTab, isLastPage: false)
             
-            Button(action: { isImageEnlarged2 = true }) {
-                Image("ActiveNavigation")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 380, maxHeight: 380)
-                    .padding(.vertical, 12)
-                    .accessibilityLabel("Tutorial page 2 image")
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.accentColor)
-                Text("Click image to enlarge")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
+            ImageSection(
+                imageName: "ActiveNavigation",
+                isEnlarged: $isImageEnlarged,
+                accessibilityLabel: "Tutorial page 2 image"
+            )
             
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("Navigation Screen")
                         .font(.title)
-                        .bold()
-                    Text("""
-- Red, click this to open the list of directions for the current navigation route
-- Dark green, shows how far the user has traveled since starting the trip
-- Orange, shows the trip eta inside navigation, will not show when outside navigation
-- Cyan, spoken turn by turn navigation mute button
-- Dark blue, recenters the users view on their current location (doesn’t work rn)
-- Light green, shows the address where the user is currently navigating to (won’t be there when not navigating)
-- Light blue, ends the trip and navigation
-- Pink, only ends navigation while keeping trip tracking active
-""")
-                    .font(.body)
-                    Spacer()
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+                    
+                    FeatureGroup(title: "Navigation Details") {
+                        FeatureItem(color: "Red", description: "View turn-by-turn directions list for current route")
+                        FeatureItem(color: "Light green", description: "Shows current navigation destination")
+                        FeatureItem(color: "Orange", description: "Trip ETA (visible during active navigation)")
+                    }
+                    
+                    FeatureGroup(title: "Trip Tracking") {
+                        FeatureItem(color: "Dark green", description: "Distance traveled since trip start")
+                    }
+                    
+                    FeatureGroup(title: "Controls") {
+                        FeatureItem(color: "Cyan", description: "Mute/unmute spoken turn-by-turn directions")
+                        FeatureItem(color: "Dark blue", description: "Recenter view on current location")
+                        FeatureItem(color: "Light blue", description: "End trip and navigation")
+                        FeatureItem(color: "Pink", description: "End navigation only (keeps trip tracking active)")
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
         }
-        .fullScreenCover(isPresented: $isImageEnlarged2) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Image("ActiveNavigation")
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") { isImageEnlarged2 = false }
-                        .font(.title3)
-                        .padding()
-                        .background(Color.white.opacity(0.7))
-                        .cornerRadius(10)
-                }
-            }
+        .fullScreenCover(isPresented: $isImageEnlarged) {
+            ImageEnlargedView(imageName: "ActiveNavigation", isPresented: $isImageEnlarged)
         }
     }
 }
+
+// MARK: - Page 3: Trip Log Screen
 
 private struct TutorialTabPage3: View {
     @Binding var selectedTab: Int
-    @State private var isImageEnlarged3 = false
+    @State private var isImageEnlarged = false
     
     var body: some View {
-        VStack {
-            HStack {
-                Button("Previous") {
-                    if selectedTab > 0 {
-                        selectedTab -= 1
-                    }
-                }
-                .disabled(selectedTab == 0)
-
-                Spacer()
-
-                Button("Next") {
-                    if selectedTab < 4 {
-                        selectedTab += 1
-                    }
-                }
-                .disabled(selectedTab == 4)
-            }
-            .padding(.top, 24)
-            .padding(.horizontal)
+        VStack(spacing: 0) {
+            NavigationButtonsView(selectedTab: $selectedTab, isLastPage: false)
             
-            Button(action: { isImageEnlarged3 = true }) {
-                Image("TripLogScreen")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 380, maxHeight: 380)
-                    .padding(.vertical, 12)
-                    .accessibilityLabel("Tutorial page 3 image")
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.accentColor)
-                Text("Click image to enlarge")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
+            ImageSection(
+                imageName: "TripLogScreen",
+                isEnlarged: $isImageEnlarged,
+                accessibilityLabel: "Tutorial page 3 image"
+            )
             
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("Trip Log Screen")
                         .font(.title)
-                        .bold()
-                    Text("""
-- White, search bar allowing users to search trip logs via notes or category
-- Pink, allows the user to export trip logs when trip logs are selected
-- Red, allows users to delete trip logs when trip logs are selected
-- Yellow, allows users to select all trip logs at one time for easy exporting or deletion
-- Orange, allows users to sort trip logs by multiple categories
-- Dark green, allows users to open user added images
-- Light green, allows user to listen to user recorded audio logs
-- Light blue, select trip log manually
-- Dark blue, hides or shows the map showing the user the route driven
-- Cyan, allows users to open a trip log edit screen
-""")
-                    .font(.body)
-                    Spacer()
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+                    
+                    FeatureGroup(title: "Search & Filter") {
+                        FeatureItem(color: "White", description: "Search trip logs by notes or category")
+                        FeatureItem(color: "Orange", description: "Sort trip logs by various criteria")
+                    }
+                    
+                    FeatureGroup(title: "Bulk Actions") {
+                        FeatureItem(color: "Yellow", description: "Select all trip logs at once")
+                        FeatureItem(color: "Pink", description: "Export selected trip logs")
+                        FeatureItem(color: "Red", description: "Delete selected trip logs")
+                    }
+                    
+                    FeatureGroup(title: "Individual Trip Actions") {
+                        FeatureItem(color: "Light blue", description: "Manually select individual trip logs")
+                        FeatureItem(color: "Cyan", description: "Open trip log edit screen")
+                        FeatureItem(color: "Dark blue", description: "Show/hide route map for the trip")
+                        FeatureItem(color: "Dark green", description: "View attached images")
+                        FeatureItem(color: "Light green", description: "Listen to recorded audio logs")
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
         }
-        .fullScreenCover(isPresented: $isImageEnlarged3) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Image("TripLogScreen")
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") { isImageEnlarged3 = false }
-                        .font(.title3)
-                        .padding()
-                        .background(Color.white.opacity(0.7))
-                        .cornerRadius(10)
-                }
-            }
+        .fullScreenCover(isPresented: $isImageEnlarged) {
+            ImageEnlargedView(imageName: "TripLogScreen", isPresented: $isImageEnlarged)
         }
     }
 }
+
+// MARK: - Page 4: Trip Log Edit Screen
 
 private struct TutorialTabPage4: View {
     @Binding var selectedTab: Int
-    @State private var isImageEnlarged4 = false
+    @State private var isImageEnlarged = false
     
     var body: some View {
-        VStack {
-            HStack {
-                Button("Previous") {
-                    if selectedTab > 0 {
-                        selectedTab -= 1
-                    }
-                }
-                .disabled(selectedTab == 0)
-
-                Spacer()
-
-                Button("Next") {
-                    if selectedTab < 4 {
-                        selectedTab += 1
-                    }
-                }
-                .disabled(selectedTab == 4)
-            }
-            .padding(.top, 24)
-            .padding(.horizontal)
+        VStack(spacing: 0) {
+            NavigationButtonsView(selectedTab: $selectedTab, isLastPage: false)
             
-            Button(action: { isImageEnlarged4 = true }) {
-                Image("TripLogEditScreen")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 380, maxHeight: 380)
-                    .padding(.vertical, 12)
-                    .accessibilityLabel("Tutorial page 4 image")
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.accentColor)
-                Text("Click image to enlarge")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
+            ImageSection(
+                imageName: "TripLogEditScreen",
+                isEnlarged: $isImageEnlarged,
+                accessibilityLabel: "Tutorial page 4 image"
+            )
             
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     Text("Trip Log Edit Screen")
                         .font(.title)
-                        .bold()
-                    Text("""
-- Orange, allows the user to exit the screen WITHOUT saving the inputted information
-- Yellow, allows the user to save all changes made to the trip log
-- Dark green, allows user to select a category for the trip
-- Light green, allows user to add custom notes to the trip log
-- Cyan, allows user to input a dollar amount that is related to that certain trip
-- Dark blue, allows user to add pictures to the trip log
-- Light blue, allows user to record audio logs for that trip
-""")
-                    .font(.body)
-                    Spacer()
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+                    
+                    FeatureGroup(title: "Save Options") {
+                        FeatureItem(color: "Orange", description: "Exit without saving changes")
+                        FeatureItem(color: "Yellow", description: "Save all changes to trip log")
+                    }
+                    
+                    FeatureGroup(title: "Trip Details") {
+                        FeatureItem(color: "Dark green", description: "Select trip category")
+                        FeatureItem(color: "Light green", description: "Add custom notes")
+                        FeatureItem(color: "Cyan", description: "Enter trip-related dollar amount")
+                    }
+                    
+                    FeatureGroup(title: "Attachments") {
+                        FeatureItem(color: "Dark blue", description: "Add photos to trip log")
+                        FeatureItem(color: "Light blue", description: "Record audio logs")
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
         }
-        .fullScreenCover(isPresented: $isImageEnlarged4) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Image("TripLogEditScreen")
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") { isImageEnlarged4 = false }
-                        .font(.title3)
-                        .padding()
-                        .background(Color.white.opacity(0.7))
-                        .cornerRadius(10)
-                }
-            }
+        .fullScreenCover(isPresented: $isImageEnlarged) {
+            ImageEnlargedView(imageName: "TripLogEditScreen", isPresented: $isImageEnlarged)
         }
     }
 }
 
+// MARK: - Page 5: Mileage Report Screen
+
 private struct TutorialTabPage5: View {
     @Binding var selectedTab: Int
-    @State private var isImageEnlarged5 = false
+    @State private var isImageEnlarged = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             HStack {
                 Button("Previous") {
                     if selectedTab > 0 {
@@ -409,60 +270,195 @@ private struct TutorialTabPage5: View {
                 Button("Done") {
                     dismiss()
                 }
+                .fontWeight(.semibold)
             }
             .padding(.top, 24)
             .padding(.horizontal)
             
-            Button(action: { isImageEnlarged5 = true }) {
-                Image("MileageTrackerScreen")
+            ImageSection(
+                imageName: "MileageTrackerScreen",
+                isEnlarged: $isImageEnlarged,
+                accessibilityLabel: "Tutorial page 5 image"
+            )
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Mileage Report Screen")
+                        .font(.title)
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 8)
+                    
+                    FeatureGroup(title: "Filters & Reports") {
+                        FeatureItem(color: "Red", description: "Filter trips by time frame (daily, weekly, monthly, yearly)")
+                        FeatureItem(color: "Cyan", description: "Filter trips by category")
+                    }
+                    
+                    Text("View comprehensive mileage and time graphs based on your selected filters.")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 8)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
+            }
+        }
+        .fullScreenCover(isPresented: $isImageEnlarged) {
+            ImageEnlargedView(imageName: "MileageTrackerScreen", isPresented: $isImageEnlarged)
+        }
+    }
+}
+
+// MARK: - Reusable Components
+
+private struct NavigationButtonsView: View {
+    @Binding var selectedTab: Int
+    let isLastPage: Bool
+    
+    var body: some View {
+        HStack {
+            Button("Previous") {
+                if selectedTab > 0 {
+                    selectedTab -= 1
+                }
+            }
+            .disabled(selectedTab == 0)
+
+            Spacer()
+
+            Button(isLastPage ? "Done" : "Next") {
+                if selectedTab < 4 {
+                    selectedTab += 1
+                }
+            }
+            .disabled(selectedTab == 4)
+            .fontWeight(isLastPage ? .semibold : .regular)
+        }
+        .padding(.top, 24)
+        .padding(.horizontal)
+    }
+}
+
+private struct ImageSection: View {
+    let imageName: String
+    @Binding var isEnlarged: Bool
+    let accessibilityLabel: String
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Button(action: { isEnlarged = true }) {
+                Image(imageName)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 380, maxHeight: 380)
+                    .cornerRadius(12)
+                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                     .padding(.vertical, 12)
-                    .accessibilityLabel("Tutorial page 5 image")
+                    .accessibilityLabel(accessibilityLabel)
             }
             .buttonStyle(PlainButtonStyle())
             
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
                     .foregroundColor(.accentColor)
-                Text("Click image to enlarge")
+                Text("Tap image to enlarge")
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, 12)
+        }
+    }
+}
+
+private struct FeatureGroup<Content: View>: View {
+    let title: String
+    let content: Content
+    
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
             
-            ScrollView {
-                VStack(spacing: 24) {
-                    Text("Mileage Report Screen")
-                        .font(.title)
-                        .bold()
-                    Text("""
-- Red, allows the user to filter what trips get shown in the selected time frame
-- Cyan, allows user to filter what logs get shown based on the category of trip
-""")
+            VStack(alignment: .leading, spacing: 10) {
+                content
+            }
+            .padding(.leading, 8)
+        }
+    }
+}
+
+private struct FeatureItem: View {
+    let color: String
+    let description: String
+    
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(Color.accentColor.opacity(0.8))
+                .frame(width: 8, height: 8)
+                .padding(.top, 6)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(color)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.accentColor)
+                
+                Text(description)
                     .font(.body)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .foregroundColor(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .fullScreenCover(isPresented: $isImageEnlarged5) {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack {
+    }
+}
+
+private struct ImageEnlargedView: View {
+    let imageName: String
+    @Binding var isPresented: Bool
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                HStack {
                     Spacer()
-                    Image("MileageTrackerScreen")
-                        .resizable()
-                        .scaledToFit()
-                        .padding()
-                    Spacer()
-                    Button("Close") { isImageEnlarged5 = false }
-                        .font(.title3)
-                        .padding()
-                        .background(Color.white.opacity(0.7))
-                        .cornerRadius(10)
+                    Button(action: { isPresented = false }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.white)
+                            .padding()
+                    }
                 }
+                
+                Spacer()
+                
+                Image(imageName)
+                    .resizable()
+                    .scaledToFit()
+                    .padding()
+                
+                Spacer()
+                
+                Button("Close") {
+                    isPresented = false
+                }
+                .font(.title3)
+                .fontWeight(.medium)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.9))
+                .foregroundColor(.black)
+                .cornerRadius(10)
+                .padding(.bottom, 32)
             }
         }
     }

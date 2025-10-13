@@ -71,6 +71,7 @@ struct Vehicle: Identifiable, Codable, Equatable {
 }
 
 struct SettingsView: View {
+    @EnvironmentObject var tripManager: TripManager
     @AppStorage("userFirstName") private var userFirstName: String = ""
     @AppStorage("appDarkMode") private var appDarkMode: Bool = false
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
@@ -172,7 +173,6 @@ struct SettingsView: View {
     @StateObject private var searchCompleter = AddressSearchCompleter()
     @StateObject private var premiumManager = PremiumManager.shared
 
-    @EnvironmentObject var tripManager: TripManager
     
     @State private var showAbout = false
     @State private var showContact = false
@@ -208,6 +208,9 @@ struct SettingsView: View {
     @State private var showBackgroundSheet = false
     
     @State private var expandedSections: Set<String> = []
+    @State private var showOnboardingDebug = false
+    @State private var showTutorialDebug = false
+    @State private var showTutorial: Bool = false
 
     private var appVersion: String {
         let dict = Bundle.main.infoDictionary
@@ -286,8 +289,17 @@ struct SettingsView: View {
                                 Label("What's New", systemImage: "sparkles")
                             }
                             Divider()
-                            Button(action: { showBypassSheet = true }) {
-                                Label("Developer", systemImage: "key.fill")
+                            Menu("Developer", systemImage: "wrench.and.screwdriver") {
+                                Button(action: { showBypassSheet = true }) {
+                                    Label("Bypass / Premium", systemImage: "key.fill")
+                                }
+                                Divider()
+                                Button(action: { showOnboardingDebug = true }) {
+                                    Label("Present Onboarding", systemImage: "play.rectangle.fill")
+                                }
+                                Button(action: { showTutorialDebug = true }) {
+                                    Label("Present Tutorial Screens", systemImage: "book.pages.fill")
+                                }
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
@@ -315,6 +327,7 @@ struct SettingsView: View {
                 }
                 .sheet(isPresented: $showDataManagement) {
                     DataManagementView()
+                        .environmentObject(tripManager)
                 }
                 .sheet(isPresented: $showPrivacySettings) {
                     PrivacySettingsView()
@@ -326,7 +339,19 @@ struct SettingsView: View {
                     JamesDrozImageView()
                 }
                 .sheet(isPresented: $showWhatsNew) {
-                    WhatsNewView(currentVersion: appVersion, onDismiss: { showWhatsNew = false })
+                    WhatsNewView(
+                        currentVersion: appVersion,
+                        onDismiss: { showWhatsNew = false }
+                    )
+                }
+                .sheet(isPresented: $showOnboardingDebug) {
+                    OnboardingView(
+                        onDismiss: { showOnboardingDebug = false },
+                        showTutorial: $showTutorial
+                    )
+                }
+                .sheet(isPresented: $showTutorialDebug) {
+                    TutorialScreenPage()
                 }
             }
             .sheet(isPresented: $showAbout) {
@@ -913,8 +938,10 @@ struct SettingsView: View {
         defaults.removeObject(forKey: "tripCategories")
         defaults.removeObject(forKey: "autoTripDetectionEnabled")
         
-        tripManager.trips.removeAll()
-        tripManager.removeBackgroundImage()
+        // Access through a local variable to avoid wrapper issues
+        let manager = tripManager
+        manager.trips.removeAll()
+        manager.removeBackgroundImage()
 
         userFirstName = ""
         hasSeenOnboarding = false
@@ -1657,7 +1684,7 @@ struct DataManagementView: View {
         NavigationView {
             Form {
                 Section(header: Text("Trip Statistics")) {
-                    HStack {
+                    HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Total Trips")
                                 .foregroundColor(.secondary)
@@ -1721,7 +1748,9 @@ struct DataManagementView: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    Button(action: clearAllTrips) {
+                    Button(action: {
+                        tripManager.trips.removeAll()
+                    }) {
                         Label("Delete All Trips", systemImage: "trash.fill")
                             .foregroundColor(.red)
                     }
@@ -1919,9 +1948,6 @@ struct DataManagementView: View {
         }
     }
     
-    private func clearAllTrips() {
-        tripManager.trips.removeAll()
-    }
 }
 
 // MARK: - Category Manager View
@@ -2067,3 +2093,4 @@ struct CategoryManagerView: View {
         .environmentObject(TripManager())
         .environmentObject(PremiumManager.shared)
 }
+

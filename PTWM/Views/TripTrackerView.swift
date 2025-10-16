@@ -43,6 +43,10 @@ struct RouteMapViewWrapper: UIViewRepresentable {
     var isNavigating: Bool
     @Binding var shouldRecenter: Bool
     var mapType: MKMapType
+    var showPOI: Bool
+    var show3DBuildings: Bool
+    var showCompass: Bool
+    var showScale: Bool
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -50,11 +54,25 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.userTrackingMode = isNavigating ? .followWithHeading : .follow
         mapView.mapType = mapType
+        
+        // Apply settings
+        mapView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
+        mapView.showsCompass = showCompass
+        mapView.showsScale = showScale
+        
+        // Enable 3D buildings
+        if show3DBuildings {
+            mapView.camera.pitch = 45
+        }
+        
         return mapView
     }
 
     func updateUIView(_ uiView: MKMapView, context: Context) {
         uiView.mapType = mapType
+        uiView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
+        uiView.showsCompass = showCompass
+        uiView.showsScale = showScale
         
         let heading = uiView.userLocation.heading?.trueHeading ?? uiView.userLocation.location?.course ?? 0
         let currentRegionCenter = uiView.region.center
@@ -63,13 +81,12 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         let distance = currentCenterLocation.distance(from: newCenterLocation)
 
         if isNavigating {
-            // Keep user location visible - offset camera center slightly ahead based on heading
             let distanceAhead: CLLocationDistance = 100
             let centerCoordinate = coordinate(from: userLocation, distanceMeters: distanceAhead, bearingDegrees: heading)
             
-            let camera = MKMapCamera(lookingAtCenter: centerCoordinate, fromDistance: 400, pitch: 60, heading: heading)
+            let pitch: CGFloat = show3DBuildings ? 60 : 0
+            let camera = MKMapCamera(lookingAtCenter: centerCoordinate, fromDistance: 400, pitch: pitch, heading: heading)
             
-            // Continuous smooth animation - use CATransaction for butter-smooth movement
             CATransaction.begin()
             CATransaction.setAnimationDuration(1.0)
             CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .linear))
@@ -119,6 +136,7 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         var lastRoutePolyline: MKPolyline?
         var lastCameraDistance: CLLocationDistance?
         var lastHeading: CLLocationDirection?
+        
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
@@ -149,6 +167,7 @@ struct ExpressRideView: View {
     @State private var navigationState = NavigationState()
     
     // UI State
+    @State private var showSpeedWarning = false
     @State private var isTripStarted = false
     @State private var showAddressPanel = true
     @State private var showingRouteError = false
@@ -164,6 +183,14 @@ struct ExpressRideView: View {
     @State private var showFavoritesSheet = false
     @State private var showEndTripConfirmation = false
     @State private var isCalculatingRoute = false
+    @AppStorage("showPOIOnMap") private var showPOIOnMap: Bool = true
+    @AppStorage("show3DBuildings") private var show3DBuildings: Bool = true
+    @AppStorage("showMapCompass") private var showMapCompass: Bool = true
+    @AppStorage("showMapScale") private var showMapScale: Bool = false
+    @AppStorage("speedLimitWarningEnabled") private var speedLimitWarningEnabled: Bool = false
+    @AppStorage("speedLimitThreshold") private var speedLimitThreshold: Double = 75.0
+    @AppStorage("fontSizeMultiplier") private var fontSizeMultiplier: Double = 1.0
+    @AppStorage("enableSpeedTracking") private var enableSpeedTracking: Bool = false
     
     // Speech
     @State private var speechSynthesizer = AVSpeechSynthesizer()
@@ -334,6 +361,45 @@ struct ExpressRideView: View {
         }
     }
     
+    // MARK: - SPEED DISPLAY COMPONENT
+    
+    private var speedDisplayOverlay: some View {
+        Group {
+            if enableSpeedTracking && isTripStarted && tripManager.currentSpeed > 0 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 4) {
+                            Image(systemName: "speedometer")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                            Text("\(Int(tripManager.currentSpeed))")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundColor(.white)
+                            Text(useKilometers ? "km/h" : "mph")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .padding(16)
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                                )
+                        )
+                        .shadow(radius: 8)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, navigationState.route != nil ? 240 : 200)
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+    }
+    
     // MARK: - Map Layer
     private func mapLayer(mapType: MKMapType) -> some View {
         Group {
@@ -343,7 +409,11 @@ struct ExpressRideView: View {
                     route: navigationState.route,
                     isNavigating: isTripStarted,
                     shouldRecenter: $shouldRecenter,
-                    mapType: mapType
+                    mapType: mapType,
+                    showPOI: showPOIOnMap,
+                    show3DBuildings: show3DBuildings,
+                    showCompass: showMapCompass,
+                    showScale: showMapScale
                 )
                 .ignoresSafeArea()
                 .accessibilityElement(children: .contain)
@@ -361,32 +431,81 @@ struct ExpressRideView: View {
                 .background(Color.gray.opacity(0.1))
                 .ignoresSafeArea()
             }
+            
+            if showSpeedWarning && speedLimitWarningEnabled {
+                VStack {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Speed Warning")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text("You're exceeding \(Int(speedLimitThreshold)) mph")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        Spacer()
+                        Button(action: { showSpeedWarning = false }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+                    }
+                    .padding()
+                    .background(Color.red.opacity(0.95))
+                    .cornerRadius(12)
+                    .shadow(radius: 8)
+                    .padding(.horizontal)
+                    .padding(.top, 60)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(11)
+            }
         }
     }
-    
+
     // MARK: - Distance Banner
     private var distanceBanner: some View {
         HStack {
+            // Distance
             Text("Distance: \(DistanceFormatterHelper.string(for: tripManager.currentDistance, useKilometers: useKilometers))")
-                .font(.headline)
+                .font(.system(size: 17 * fontSizeMultiplier, weight: .semibold))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial)
                 .foregroundColor(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
-                .accessibilityLabel("Current trip distance: \(DistanceFormatterHelper.string(for: tripManager.currentDistance, useKilometers: useKilometers))")
             
-            Spacer().frame(width: 16)
+            Spacer().frame(width: 12)
             
+            // Current Speed (if speed tracking enabled)
+            if enableSpeedTracking && tripManager.currentSpeed > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "speedometer")
+                        .font(.system(size: 14 * fontSizeMultiplier))
+                    Text("\(Int(tripManager.currentSpeed)) mph")
+                        .font(.system(size: 17 * fontSizeMultiplier, weight: .semibold))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                
+                Spacer().frame(width: 12)
+            }
+            
+            // ETA
             if let eta = navigationState.estimatedTravelTime {
                 Text("ETA: \(formatETA(eta))")
-                    .font(.headline)
+                    .font(.system(size: 17 * fontSizeMultiplier, weight: .semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(.ultraThinMaterial)
                     .foregroundColor(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .accessibilityLabel("Estimated time of arrival: \(formatETA(eta))")
             }
             
             Spacer()
@@ -499,11 +618,11 @@ struct ExpressRideView: View {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(distanceText)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 22 * fontSizeMultiplier, weight: .bold))
                         .foregroundStyle(Color.blue)
                         .accessibilityIdentifier("NextTurnDistance")
                     Text(step.instructions)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18 * fontSizeMultiplier, weight: .semibold))
                         .foregroundStyle(Color.primary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
@@ -519,8 +638,6 @@ struct ExpressRideView: View {
                             .foregroundColor(navigationState.currentStepIndex == 0 ? .gray : .blue)
                     }
                     .disabled(navigationState.currentStepIndex == 0)
-                    .accessibilityLabel("Previous step")
-                    .accessibilityHint(navigationState.currentStepIndex == 0 ? "Already at first step" : "Go to previous navigation step")
                     
                     Button(action: {
                         provideFeedback(.light)
@@ -530,19 +647,17 @@ struct ExpressRideView: View {
                             .foregroundColor(navigationState.currentStepIndex == navigationState.navigationSteps.count - 1 ? .gray : .blue)
                     }
                     .disabled(navigationState.currentStepIndex == navigationState.navigationSteps.count - 1)
-                    .accessibilityLabel("Next step")
-                    .accessibilityHint(navigationState.currentStepIndex == navigationState.navigationSteps.count - 1 ? "Already at last step" : "Go to next navigation step")
                 }
             }
-                .padding(.vertical, 14)
-                .padding(.horizontal, 20)
-                .background(.ultraThinMaterial)
-                .cornerRadius(18)
-                .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
-                .padding(.horizontal, 16)
-                .transition(.opacity)
-                .animation(.easeInOut, value: navigationState.currentStepIndex)
-                .accessibilityElement(children: .contain)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 20)
+            .background(.ultraThinMaterial)
+            .cornerRadius(18)
+            .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
+            .padding(.horizontal, 16)
+            .transition(.opacity)
+            .animation(.easeInOut, value: navigationState.currentStepIndex)
+            .accessibilityElement(children: .contain)
         )
     }
     
@@ -683,6 +798,22 @@ struct ExpressRideView: View {
         }
     }
     
+    private func handleStepChange() {
+            hasSpokenFinalReminder = false
+            speakCurrentStep(reminder: false)
+        }
+    
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+            if newPhase == .active && isTripStarted {
+                showBanner = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation {
+                        showBanner = false
+                    }
+                }
+            }
+        }
+    
     private var suggestionsList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -737,21 +868,32 @@ struct ExpressRideView: View {
         checkStepProximity()
         updateRemainingMiles()
         checkOffRouteAndReroute()
+        checkSpeedLimit() // NEW
     }
-    
-    private func handleStepChange() {
-        hasSpokenFinalReminder = false
-        speakCurrentStep(reminder: false)
-    }
-    
-    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
-        if newPhase == .active && isTripStarted {
-            showBanner = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                withAnimation {
-                    showBanner = false
+
+    private func checkSpeedLimit() {
+        guard speedLimitWarningEnabled else {
+            showSpeedWarning = false
+            return
+        }
+        
+        // Get current speed from TripManager
+        let currentSpeedMPH = tripManager.currentSpeed
+        
+        if currentSpeedMPH > speedLimitThreshold {
+            if !showSpeedWarning {
+                showSpeedWarning = true
+                provideFeedback(.heavy)
+                
+                // Optional: Speak warning if not muted
+                if !isMuted {
+                    let utterance = AVSpeechUtterance(string: "Speed limit exceeded")
+                    utterance.rate = 0.5
+                    speechSynthesizer.speak(utterance)
                 }
             }
+        } else {
+            showSpeedWarning = false
         }
     }
     

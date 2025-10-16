@@ -29,6 +29,10 @@ struct TripLogDetailView: View {
                         mapSection
                     }
                     
+                    if trip.routeCoordinates.count >= 2 {
+                        interactiveMapSection
+                    }
+                    
                     // Trip Statistics Card
                     statisticsCard
                     
@@ -120,6 +124,79 @@ struct TripLogDetailView: View {
         }
     }
     
+    // MARK: - TripLogDetailView Statistics Card Fix
+    
+    private var calculatedAverageSpeed: Double {
+            if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
+                return avgSpeed
+            }
+            let duration = trip.endTime.timeIntervalSince(trip.startTime)
+            guard duration > 0 else { return 0 }
+            let distanceMeters = trip.distance * 1609.34
+            return distanceMeters / duration
+        }
+        
+        private var statisticsCard: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Statistics")
+                    .font(.headline)
+                
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 16) {
+                    StatItem(
+                        icon: "speedometer",
+                        title: "Distance",
+                        value: DistanceFormatterHelper.string(for: trip.distance, useKilometers: useKilometers),
+                        color: .blue
+                    )
+                    
+                    StatItem(
+                        icon: "clock",
+                        title: "Duration",
+                        value: formattedDuration(from: trip.startTime, to: trip.endTime),
+                        color: .green
+                    )
+                    
+                    StatItem(
+                        icon: "gauge",
+                        title: "Avg Speed",
+                        value: AverageSpeedFormatter.string(forMetersPerSecond: calculatedAverageSpeed, useKilometers: useKilometers),
+                        color: .orange
+                    )
+                    
+                    if let fuelGallons = fuelUsedForTrip {
+                        StatItem(
+                            icon: "fuelpump",
+                            title: "Fuel Used",
+                            value: String(format: "%.2f gal", fuelGallons),
+                            color: .red
+                        )
+                    }
+                }
+            }
+            .padding()
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+        }
+        
+        private func formattedDuration(from start: Date, to end: Date) -> String {
+            let interval = Int(end.timeIntervalSince(start))
+            let hours = interval / 3600
+            let minutes = (interval % 3600) / 60
+            let seconds = interval % 60
+            
+            if hours > 0 {
+                return "\(hours)h \(minutes)m"
+            } else if minutes > 0 {
+                return "\(minutes)m"
+            } else {
+                return "\(seconds)s"
+            }
+        }
+    
     // MARK: - View Components
     
     private var tripHeaderCard: some View {
@@ -164,54 +241,6 @@ struct TripLogDetailView: View {
                         .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                 )
         }
-    }
-    
-    private var statisticsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Statistics")
-                .font(.headline)
-            
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 16) {
-                StatItem(
-                    icon: "speedometer",
-                    title: "Distance",
-                    value: DistanceFormatterHelper.string(for: trip.distance, useKilometers: useKilometers),
-                    color: .blue
-                )
-                
-                StatItem(
-                    icon: "clock",
-                    title: "Duration",
-                    value: formattedDuration(from: trip.startTime, to: trip.endTime),
-                    color: .green
-                )
-                
-                if let avgSpeed = trip.averageSpeed {
-                    StatItem(
-                        icon: "gauge",
-                        title: "Avg Speed",
-                        value: AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers),
-                        color: .orange
-                    )
-                }
-                
-                if let fuelGallons = fuelUsedForTrip {
-                    StatItem(
-                        icon: "fuelpump",
-                        title: "Fuel Used",
-                        value: String(format: "%.2f gal", fuelGallons),
-                        color: .red
-                    )
-                }
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
     
     private var infoCard: some View {
@@ -429,21 +458,6 @@ struct TripLogDetailView: View {
     
     // MARK: - Helper Methods
     
-    private func formattedDuration(from start: Date, to end: Date) -> String {
-        let interval = Int(end.timeIntervalSince(start))
-        let hours = interval / 3600
-        let minutes = (interval % 3600) / 60
-        let seconds = interval % 60
-        
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else if minutes > 0 {
-            return "\(minutes)m"
-        } else {
-            return "\(seconds)s"
-        }
-    }
-    
     private func generateShareText() -> String {
         var text = "Trip Summary\n\n"
         text += "Date: \(trip.startTime.formatted(date: .long, time: .omitted))\n"
@@ -553,5 +567,61 @@ struct PhotoDetailView: View {
 extension Array where Element == CodableCoordinate {
     var clCoordinates: [CLLocationCoordinate2D] {
         map { $0.clCoordinate }
+    }
+}
+
+extension TripLogDetailView {
+    var interactiveMapSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Interactive Route Playback")
+                .font(.headline)
+            
+            NavigationLink(destination: FullScreenRoutePlaybackView(trip: trip)) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Scrub through your trip")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Text("View speed and time at any point")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "play.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.accentColor)
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+            }
+        }
+    }
+}
+
+struct FullScreenRoutePlaybackView: View {
+    let trip: Trip
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPointIndex: Int? = nil
+    
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            InteractiveTripMapView(trip: trip, selectedPointIndex: $selectedPointIndex)
+                .ignoresSafeArea()
+            
+            // Close button
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .foregroundColor(.white)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+                    .padding()
+            }
+        }
+        .navigationBarHidden(true)
     }
 }

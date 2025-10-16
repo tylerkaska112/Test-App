@@ -171,7 +171,6 @@ struct SettingsView: View {
     @StateObject private var motionPermission = MotionPermissionManager()
     @StateObject private var microphonePermission = MicrophonePermissionManager()
     @StateObject private var searchCompleter = AddressSearchCompleter()
-    @StateObject private var premiumManager = PremiumManager.shared
 
     
     @State private var showAbout = false
@@ -232,8 +231,6 @@ struct SettingsView: View {
             NavigationView {
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Premium Status Card
-                        premiumStatusCard
                         
                         // Quick Actions
                         quickActionsCard
@@ -375,56 +372,6 @@ struct SettingsView: View {
     }
     
     // MARK: - Card Views
-    
-    private var premiumStatusCard: some View {
-        SettingsCard(icon: "star.fill", title: "Premium", iconColor: .yellow) {
-            if premiumManager.isPremium {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                    Text("Premium Unlocked!").bold()
-                    Spacer()
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Button(action: {
-                        Task { await premiumManager.purchasePremium() }
-                    }) {
-                        HStack {
-                            Image(systemName: "star.circle.fill").foregroundColor(.yellow)
-                            Text("Unlock Premium")
-                            if premiumManager.purchaseInProgress {
-                                ProgressView().scaleEffect(0.8)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                    }
-                    .buttonStyle(GlassProminentButtonStyle())
-                    .disabled(premiumManager.purchaseInProgress)
-                    
-                    Button(action: {
-                        Task { await premiumManager.restorePurchases() }
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.counterclockwise.circle.fill").foregroundColor(.blue)
-                            Text("Restore Purchase")
-                            if premiumManager.purchaseInProgress {
-                                ProgressView().scaleEffect(0.8)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                    }
-                    .buttonStyle(GlassButtonStyle())
-                    .disabled(premiumManager.purchaseInProgress)
-                    .accessibilityIdentifier("RestorePurchaseButton")
-                }
-                .alert(isPresented: .constant(premiumManager.purchaseError != nil)) {
-                    Alert(title: Text("Purchase Error"), message: Text(premiumManager.purchaseError ?? ""), dismissButton: .default(Text("OK"), action: { premiumManager.purchaseError = nil }))
-                }
-            }
-        }
-    }
     
     private var quickActionsCard: some View {
         SettingsCard(icon: "bolt.fill", title: "Quick Actions", iconColor: .orange) {
@@ -1027,7 +974,96 @@ struct SettingsView: View {
     }
     
     private func exportTripData() {
-        print("Export trip data requested")
+        let gpxString = generateGPX()
+        shareContent(gpxString, filename: "waylon_trips_\(Date().ISO8601Format()).gpx")
+    }
+
+    private func generateGPX() -> String {
+        var gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx version="1.1" creator="WaylonApp" xmlns="http://www.topografix.com/GPX/1/1">
+        <metadata>
+        <name>Waylon Trips Export</name>
+        <time>\(ISO8601DateFormatter().string(from: Date()))</time>
+        </metadata>
+        
+        """
+        
+        for (index, trip) in tripManager.trips.enumerated() {
+            let categoryString: String = {
+                let mirror = Mirror(reflecting: trip)
+                if let cat = mirror.children.first(where: { $0.label == "reason" })?.value as? String {
+                    return cat
+                }
+                return "Uncategorized"
+            }()
+            
+            let dateFormatter = ISO8601DateFormatter()
+            let startTime = dateFormatter.string(from: trip.startTime)
+            let endTime = dateFormatter.string(from: trip.endTime)
+            
+            gpx += """
+            <trk>
+            <name>Trip \(index + 1) - \(categoryString)</name>
+            <desc>\(trip.notes.isEmpty ? "No notes" : trip.notes)</desc>
+            <time>\(startTime)</time>
+            <trkseg>
+            
+            """
+            
+            // Add route points with timestamps
+            let routeCount = trip.routeCoordinates.count
+            if routeCount > 0 {
+                let timeDelta = trip.endTime.timeIntervalSince(trip.startTime) / Double(max(routeCount - 1, 1))
+                
+                for (idx, point) in trip.routeCoordinates.enumerated() {
+                    let pointTime = trip.startTime.addingTimeInterval(timeDelta * Double(idx))
+                    let pointTimeString = dateFormatter.string(from: pointTime)
+                    
+                    gpx += "<trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">\n"
+                    gpx += "<time>\(pointTimeString)</time>\n"
+                    
+                    // Add elevation if available (set to 0 as default)
+                    gpx += "<ele>0</ele>\n"
+                    
+                    gpx += "</trkpt>\n"
+                }
+            }
+            
+            gpx += """
+            </trkseg>
+            </trk>
+            
+            """
+        }
+        
+        gpx += "</gpx>"
+        return gpx
+    }
+
+    private func shareContent(_ content: String, filename: String) {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try content.write(to: tempURL, atomically: true, encoding: .utf8)
+            
+            let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+            
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = windowScene.windows.first,
+               let rootVC = window.rootViewController {
+                
+                // For iPad support
+                if let popover = activityVC.popoverPresentationController {
+                    popover.sourceView = rootVC.view
+                    popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                    popover.permittedArrowDirections = []
+                }
+                
+                rootVC.present(activityVC, animated: true)
+            }
+        } catch {
+            print("Failed to write GPX file: \(error.localizedDescription)")
+        }
     }
     
     private func shareApp() {
@@ -1136,17 +1172,7 @@ struct SettingsView: View {
             csv += row
         }
         return csv
-    }
     
-    private func shareContent(_ content: String, filename: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
-        
-        let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(activityVC, animated: true)
-        }
     }
 }
 
@@ -1639,13 +1665,11 @@ struct BypassCodeView: View {
             HStack(spacing: 20) {
                 Button("Submit") {
                     if bypassCodeInput == "unlockpremium" {
-                        PremiumManager.shared.isPremium = true
                         UserDefaults.standard.set(true, forKey: "hasPremium")
                         isPresented = false
                         bypassCodeInput = ""
                         bypassErrorMessage = nil
                     } else if bypassCodeInput == "lockpremium" {
-                        PremiumManager.shared.isPremium = false
                         UserDefaults.standard.set(false, forKey: "hasPremium")
                         isPresented = false
                         bypassCodeInput = ""
@@ -2091,6 +2115,5 @@ struct CategoryManagerView: View {
 #Preview {
     SettingsView()
         .environmentObject(TripManager())
-        .environmentObject(PremiumManager.shared)
 }
 

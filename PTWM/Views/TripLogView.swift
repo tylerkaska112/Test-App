@@ -279,7 +279,6 @@ struct TripLogView: View {
     @State private var selectedTrip: Trip? = nil
     
     @EnvironmentObject var tripManager: TripManager
-    @StateObject private var premiumManager = PremiumManager.shared
     @StateObject private var viewModel = TripLogViewModel()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.undoManager) var undoManager
@@ -340,24 +339,240 @@ struct TripLogView: View {
     
     var totalStats: (distance: Double, duration: TimeInterval, earnings: Double, count: Int) {
         let trips = filteredTrips
+        // trip.distance is ALREADY in miles, not meters!
         let totalDistance = trips.reduce(0) { $0 + $1.distance }
         let totalDuration = trips.reduce(0) { $0 + $1.endTime.timeIntervalSince($1.startTime) }
         let totalEarnings = trips.compactMap { Double($0.pay) }.reduce(0, +)
         return (totalDistance, totalDuration, totalEarnings, trips.count)
     }
-    
+
     var extendedStats: (avgSpeed: Double, topCategory: String, costPerDistance: Double) {
         let trips = filteredTrips
-        let avgSpeed = trips.compactMap { $0.averageSpeed }.reduce(0, +) / Double(max(trips.count, 1))
+        
+        // Calculate average speed correctly
+        let speeds = trips.compactMap { $0.averageSpeed }
+        let avgSpeed = speeds.isEmpty ? 0 : speeds.reduce(0, +) / Double(speeds.count)
         
         let categoryCounts = Dictionary(grouping: trips, by: { $0.reason })
             .mapValues { $0.count }
         let topCategory = categoryCounts.max(by: { $0.value < $1.value })?.key ?? "None"
         
         let totalDistance = totalStats.distance
-        let costPerDistance = totalDistance > 0 ? totalStats.earnings / (totalDistance / 1000) : 0
+        let costPerDistance = totalDistance > 0 ? totalStats.earnings / totalDistance : 0
         
         return (avgSpeed, topCategory, costPerDistance)
+    }
+
+    // MARK: - Helper Functions (FIXED)
+
+    private func formatDistance(_ miles: Double) -> String {
+        if useKilometers {
+            return String(format: "%.2f km", miles * 1.60934)
+        } else {
+            return String(format: "%.2f mi", miles)
+        }
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = (Int(seconds) % 3600) / 60
+        
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+
+    // MARK: - Statistics Summary Section (FIXED)
+
+    private var statisticsSummarySection: some View {
+        VStack(spacing: 0) {
+            Button(action: {
+                withAnimation(.spring(response: 0.3)) {
+                    showStatistics.toggle()
+                }
+            }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Trip Summary")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        HStack(spacing: 20) {
+                            StatBox(
+                                value: "\(totalStats.count)",
+                                label: "Trips",
+                                color: .accentColor,
+                                icon: "car.fill"
+                            )
+                            
+                            StatBox(
+                                value: formatDistance(totalStats.distance),
+                                label: "Distance",
+                                color: .blue,
+                                icon: "road.lanes"
+                            )
+                            
+                            if totalStats.earnings > 0 {
+                                StatBox(
+                                    value: String(format: "$%.0f", totalStats.earnings),
+                                    label: "Earnings",
+                                    color: .green,
+                                    icon: "dollarsign.circle.fill"
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: showStatistics ? "chevron.up.circle.fill" : "chevron.down.circle")
+                        .foregroundColor(.accentColor)
+                        .font(.title2)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            .padding()
+            .background(.regularMaterial)
+            
+            if showStatistics {
+                extendedStatsView
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private var extendedStatsView: some View {
+        VStack(spacing: 16) {
+            Divider()
+            
+            HStack(spacing: 16) {
+                VStack(spacing: 4) {
+                    Text("Avg Distance")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    let avgDistance = totalStats.count > 0 ? totalStats.distance / Double(totalStats.count) : 0
+                    Text(formatDistance(avgDistance))
+                        .font(.subheadline.bold())
+                }
+                .frame(maxWidth: .infinity)
+                
+                Divider()
+                    .frame(height: 30)
+                
+                VStack(spacing: 4) {
+                    Text("Avg Duration")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    let avgDuration = totalStats.count > 0 ? totalStats.duration / Double(totalStats.count) : 0
+                    Text(formatDuration(avgDuration))
+                        .font(.subheadline.bold())
+                }
+                .frame(maxWidth: .infinity)
+                
+                if totalStats.earnings > 0 {
+                    Divider()
+                        .frame(height: 30)
+                    
+                    VStack(spacing: 4) {
+                        Text("Avg Earnings")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        let avgEarnings = totalStats.count > 0 ? totalStats.earnings / Double(totalStats.count) : 0
+                        Text(String(format: "$%.2f", avgEarnings))
+                            .font(.subheadline.bold())
+                            .foregroundColor(.green)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            
+            HStack(spacing: 16) {
+                VStack(spacing: 4) {
+                    Text("Avg Speed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(AverageSpeedFormatter.string(forMetersPerSecond: extendedStats.avgSpeed, useKilometers: useKilometers))
+                        .font(.subheadline.bold())
+                }
+                .frame(maxWidth: .infinity)
+                
+                Divider()
+                    .frame(height: 30)
+                
+                VStack(spacing: 4) {
+                    Text("Top Category")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(extendedStats.topCategory)
+                        .font(.subheadline.bold())
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                
+                if totalStats.earnings > 0 {
+                    Divider()
+                        .frame(height: 30)
+                    
+                    VStack(spacing: 4) {
+                        Text(useKilometers ? "Per km" : "Per mi")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        let perDistance = useKilometers ? extendedStats.costPerDistance / 1.60934 : extendedStats.costPerDistance
+                        Text(String(format: "$%.2f", perDistance))
+                            .font(.subheadline.bold())
+                            .foregroundColor(.green)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            
+            // Total Duration Display
+            HStack(spacing: 16) {
+                VStack(spacing: 4) {
+                    Text("Total Duration")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(formatDuration(totalStats.duration))
+                        .font(.subheadline.bold())
+                }
+                .frame(maxWidth: .infinity)
+                
+                Divider()
+                    .frame(height: 30)
+                
+                VStack(spacing: 4) {
+                    Text("Total Distance")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(formatDistance(totalStats.distance))
+                        .font(.subheadline.bold())
+                        .foregroundColor(.blue)
+                }
+                .frame(maxWidth: .infinity)
+                
+                if totalStats.earnings > 0 {
+                    Divider()
+                        .frame(height: 30)
+                    
+                    VStack(spacing: 4) {
+                        Text("Total Earnings")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(String(format: "$%.2f", totalStats.earnings))
+                            .font(.subheadline.bold())
+                            .foregroundColor(.green)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground).opacity(0.5))
     }
     
     // MARK: - Body
@@ -465,36 +680,32 @@ struct TripLogView: View {
                     
                     Menu {
                         Button("Export as CSV", systemImage: "doc.text") {
-                            attemptPremiumFeature {
                                 exportTrips(format: .csv)
                             }
-                        }
+                        
                         
                         Button("Export as JSON", systemImage: "curlybraces") {
-                            attemptPremiumFeature {
                                 exportTrips(format: .json)
                             }
-                        }
+                        
                         
                         Divider()
                         
                         Button("Copy CSV", systemImage: "doc.on.doc") {
-                            attemptPremiumFeature {
                                 copyToClipboard(format: .csv)
                             }
-                        }
+                        
                         
                         Button("Copy JSON", systemImage: "chevron.left.slash.chevron.right") {
-                            attemptPremiumFeature {
                                 copyToClipboard(format: .json)
                             }
-                        }
+                        
                     } label: {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
                     .disabled(viewModel.selectedTripIDs.isEmpty)
                 }
-            }
+}
             .sheet(isPresented: $showShareSheet) {
                 if let url = exportURL {
                     ShareSheet(activityItems: [url])
@@ -720,154 +931,6 @@ struct TripLogView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
         .transition(.move(edge: .top).combined(with: .opacity))
-    }
-    
-    private var statisticsSummarySection: some View {
-        VStack(spacing: 0) {
-            Button(action: {
-                withAnimation(.spring(response: 0.3)) {
-                    showStatistics.toggle()
-                }
-            }) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Trip Summary")
-                            .font(.headline)
-                            .foregroundColor(.primary)
-                        
-                        HStack(spacing: 20) {
-                            StatBox(
-                                value: "\(totalStats.count)",
-                                label: "Trips",
-                                color: .accentColor,
-                                icon: "car.fill"
-                            )
-                            
-                            StatBox(
-                                value: formatDistance(totalStats.distance),
-                                label: "Distance",
-                                color: .blue,
-                                icon: "road.lanes"
-                            )
-                            
-                            if totalStats.earnings > 0 {
-                                StatBox(
-                                    value: "$\(totalStats.earnings, default: "%.0f")",
-                                    label: "Earnings",
-                                    color: .green,
-                                    icon: "dollarsign.circle.fill"
-                                )
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: showStatistics ? "chevron.up.circle.fill" : "chevron.down.circle")
-                        .foregroundColor(.accentColor)
-                        .font(.title2)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-            .padding()
-            .background(.regularMaterial)
-            
-            if showStatistics {
-                extendedStatsView
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-    
-    private var extendedStatsView: some View {
-        VStack(spacing: 16) {
-            Divider()
-            
-            HStack(spacing: 16) {
-                VStack(spacing: 4) {
-                    Text("Avg Distance")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    let avgDistance = totalStats.count > 0 ? totalStats.distance / Double(totalStats.count) : 0
-                    Text(formatDistance(avgDistance))
-                        .font(.subheadline.bold())
-                }
-                .frame(maxWidth: .infinity)
-                
-                Divider()
-                    .frame(height: 30)
-                
-                VStack(spacing: 4) {
-                    Text("Avg Duration")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    let avgDuration = totalStats.count > 0 ? totalStats.duration / Double(totalStats.count) : 0
-                    Text(formatDuration(avgDuration))
-                        .font(.subheadline.bold())
-                }
-                .frame(maxWidth: .infinity)
-                
-                if totalStats.earnings > 0 {
-                    Divider()
-                        .frame(height: 30)
-                    
-                    VStack(spacing: 4) {
-                        Text("Avg Earnings")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        let avgEarnings = totalStats.count > 0 ? totalStats.earnings / Double(totalStats.count) : 0
-                        Text("$\(avgEarnings, specifier: "%.2f")")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.green)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            
-            HStack(spacing: 16) {
-                VStack(spacing: 4) {
-                    Text("Avg Speed")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(AverageSpeedFormatter.string(forMetersPerSecond: extendedStats.avgSpeed, useKilometers: useKilometers))
-                        .font(.subheadline.bold())
-                }
-                .frame(maxWidth: .infinity)
-                
-                Divider()
-                    .frame(height: 30)
-                
-                VStack(spacing: 4) {
-                    Text("Top Category")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(extendedStats.topCategory)
-                        .font(.subheadline.bold())
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity)
-                
-                if totalStats.earnings > 0 {
-                    Divider()
-                        .frame(height: 30)
-                    
-                    VStack(spacing: 4) {
-                        Text("Per km")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text("$\(extendedStats.costPerDistance, specifier: "%.2f")")
-                            .font(.subheadline.bold())
-                            .foregroundColor(.green)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .padding()
-        .background(Color(.systemBackground).opacity(0.5))
     }
     
     private var tripListSection: some View {
@@ -1185,14 +1248,6 @@ struct TripLogView: View {
                                 }
                             }
                             
-                            private func attemptPremiumFeature(action: () -> Void) {
-                                if premiumManager.isPremium {
-                                    action()
-                                } else {
-                                    showPremiumUpgradePrompt = true
-                                }
-                            }
-                            
                             private func exportTrips(format: ExportFormat) {
                                 guard !viewModel.selectedTripIDs.isEmpty else {
                                     exportError = .noTripsSelected
@@ -1364,24 +1419,6 @@ struct TripLogView: View {
                                 audioPlayer = nil
                             }
                             
-                            private func formatDistance(_ meters: Double) -> String {
-                                if useKilometers {
-                                    return String(format: "%.1f km", meters / 1000)
-                                } else {
-                                    return String(format: "%.1f mi", meters * 0.000621371)
-                                }
-                            }
-                            
-                            private func formatDuration(_ seconds: TimeInterval) -> String {
-                                let hours = Int(seconds) / 3600
-                                let minutes = (Int(seconds) % 3600) / 60
-                                
-                                if hours > 0 {
-                                    return "\(hours)h \(minutes)m"
-                                } else {
-                                    return "\(minutes)m"
-                                }
-                            }
                             
                             private func formattedDuration(from start: Date, to end: Date) -> String {
                                 formatDuration(end.timeIntervalSince(start))
@@ -1610,6 +1647,31 @@ struct TripRowView: View {
         }
     }
     
+    private var formattedAverageSpeed: String {
+        // First try to use the stored average speed if available
+        if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
+            return AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers)
+        }
+        
+        // Calculate from distance and duration
+        let duration = trip.endTime.timeIntervalSince(trip.startTime)
+        
+        guard duration > 0 else {
+            return useKilometers ? "0 km/h" : "0 mph"
+        }
+        
+        // trip.distance is in miles
+        let distanceMiles = trip.distance
+        let speedMPH = (distanceMiles / duration) * 3600 // miles per hour
+        
+        if useKilometers {
+            let speedKMH = speedMPH * 1.60934
+            return String(format: "%.1f km/h", speedKMH)
+        } else {
+            return String(format: "%.1f mph", speedMPH)
+        }
+    }
+    
     private var hasMedia: Bool {
         !trip.audioNotes.isEmpty || !trip.photoURLs.isEmpty
     }
@@ -1657,16 +1719,14 @@ struct TripRowView: View {
                         }
                         .foregroundColor(.secondary)
                         
-                        // Average Speed (if available)
-                        if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "speedometer")
-                                    .font(.caption)
-                                Text(AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers))
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.secondary)
+                        // Average Speed - now always shows
+                        HStack(spacing: 4) {
+                            Image(systemName: "speedometer")
+                                .font(.caption)
+                            Text(formattedAverageSpeed)
+                                .font(.caption)
                         }
+                        .foregroundColor(.secondary)
                         
                         Spacer()
                         
@@ -1739,6 +1799,7 @@ struct TripRowView: View {
         .accessibilityLabel("Trip from \(trip.startTime.formatted()) covering \(formattedDistance)")
         .accessibilityHint("Double tap to view details")
     }
+}
     
     // MARK: - Preview
     
@@ -1747,8 +1808,7 @@ struct TripRowView: View {
         static var previews: some View {
             TripLogView()
                 .environmentObject(TripManager())
-                .environmentObject(PremiumManager.shared)
         }
     }
 #endif
-}
+

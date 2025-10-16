@@ -36,20 +36,29 @@ struct WhatsNewView: View {
     
     private let releaseNotes: [ReleaseNote] = [
         // New Features
-        ReleaseNote(text: "Import past trips from CSV/JSON files", icon: "square.and.arrow.down", category: .new),
-        ReleaseNote(text: "Export trip data in CSV and JSON formats from mileage reports", icon: "square.and.arrow.up", category: .new),
-        ReleaseNote(text: "Trip summary section showing total trips, distance, and averages", icon: "chart.bar", category: .new),
-        ReleaseNote(text: "View all unlocked achievements with new filter button", icon: "trophy", category: .new),
-        ReleaseNote(text: "Trip end confirmation to prevent accidental stops", icon: "checkmark.shield", category: .new),
+        ReleaseNote(text: "Import your trip history from CSV or JSON files seamlessly", icon: "arrow.down.doc", category: .new),
+        ReleaseNote(text: "Export any trip as a GPX file for use with other mapping apps", icon: "arrow.up.doc", category: .new),
+        ReleaseNote(text: "View comprehensive trip statistics including total distance and averages", icon: "chart.bar.fill", category: .new),
+        ReleaseNote(text: "Browse and filter all your unlocked achievements in one place", icon: "trophy.fill", category: .new),
+        ReleaseNote(text: "Confirm trip endings with a safety prompt to avoid accidental stops", icon: "hand.raised.fill", category: .new),
+        ReleaseNote(text: "Scrub through trip timelines to replay any moment from your journey", icon: "slider.horizontal.3", category: .new),
+        ReleaseNote(text: "Unlock exciting new achievements and level up your driving experience", icon: "medal.fill", category: .new),
+        ReleaseNote(text: "Calculate expenses using the official IRS mileage rate for businesses", icon: "dollarsign.circle.fill", category: .new),
+        ReleaseNote(text: "Protect your privacy by blurring saved home and work locations on maps", icon: "eye.slash.fill", category: .new),
+        ReleaseNote(text: "Filter and search through your trip logs to find exactly what you need", icon: "line.3.horizontal.decrease.circle.fill", category: .new),
         
         // Improvements
-        ReleaseNote(text: "Refreshed UI with better overall look and feel", icon: "paintbrush", category: .improved),
-        ReleaseNote(text: "Enhanced achievements system for more engaging experience", icon: "star", category: .improved),
-        ReleaseNote(text: "Search functionality added to Settings and Achievements", icon: "magnifyingglass", category: .improved),
+        ReleaseNote(text: "The app is now completely free with no subscriptions required! 🎉", icon: "gift.fill", category: .improved),
+        ReleaseNote(text: "Redesigned interface with modern styling and improved usability", icon: "paintbrush.fill", category: .improved),
+        ReleaseNote(text: "Upgraded achievements system with better progression and rewards", icon: "star.fill", category: .improved),
+        ReleaseNote(text: "Quickly find any setting or achievement with new search functionality", icon: "magnifyingglass", category: .improved),
         
         // Bug Fixes
-        ReleaseNote(text: "Optimized trip processing logic for better performance", icon: "gearshape.2", category: .fixed),
-        ReleaseNote(text: "General stability improvements and smoother operation", icon: "speedometer", category: .fixed)
+        ReleaseNote(text: "Trip log statistics now calculate and display correctly", icon: "chart.line.uptrend.xyaxis", category: .fixed),
+        ReleaseNote(text: "Speed tracking data now appears properly in all trip logs", icon: "speedometer", category: .fixed),
+        ReleaseNote(text: "All accessibility features in settings are now fully functional", icon: "accessibility", category: .fixed),
+        ReleaseNote(text: "Improved trip processing performance for smoother operation", icon: "bolt.fill", category: .fixed),
+        ReleaseNote(text: "Enhanced overall stability and eliminated common crashes", icon: "checkmark.shield.fill", category: .fixed)
     ]
     
     var body: some View {
@@ -168,6 +177,6 @@ struct WhatsNewView: View {
 // MARK: - Preview
 #if DEBUG
 #Preview {
-    WhatsNewView(currentVersion: "2.4.0", onDismiss: {})
+    WhatsNewView(currentVersion: "3.1.0", onDismiss: {})
 }
 #endif

@@ -1569,44 +1569,246 @@ struct TripLogView: View {
                             }
                         }
 
-                        struct ImportTripsView: View {
-                            let onImport: ([Trip]) -> Void
-                            @Environment(\.dismiss) private var dismiss
-                            @State private var showDocumentPicker = false
-                            
-                            var body: some View {
-                                NavigationView {
-                                    VStack(spacing: 20) {
-                                        Image(systemName: "square.and.arrow.down")
-                                            .font(.system(size: 60))
-                                            .foregroundColor(.accentColor)
-                                        
-                                        Text("Import Trips")
-                                            .font(.title.bold())
-                                        
-                                        Text("Import trips from CSV or JSON files")
-                                            .font(.body)
-                                            .foregroundColor(.secondary)
-                                            .multilineTextAlignment(.center)
-                                        
-                                        Button("Choose File", systemImage: "folder") {
-                                            showDocumentPicker = true
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                        .controlSize(.large)
-                                    }
-                                    .padding()
-                                    .navigationTitle("Import")
-                                    .navigationBarTitleDisplayMode(.inline)
-                                    .toolbar {
-                                        ToolbarItem(placement: .cancellationAction) {
-                                            Button("Cancel") { dismiss() }
-                                        }
-                                    }
-                                }
-                                // Document picker would be implemented here
-                            }
-                        }
+struct ImportTripsView: View {
+    let onImport: ([Trip]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDocumentPicker = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var isProcessing = false
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 60))
+                    .foregroundColor(.accentColor)
+                
+                Text("Import Trips")
+                    .font(.title.bold())
+                
+                Text("Import trips from CSV or JSON files")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                
+                if isProcessing {
+                    ProgressView("Processing...")
+                        .padding()
+                } else {
+                    Button("Choose File", systemImage: "folder") {
+                        showDocumentPicker = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+            }
+            .padding()
+            .navigationTitle("Import")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showDocumentPicker) {
+                DocumentPicker(isPresented: $showDocumentPicker) { url in
+                    processImportedFile(url)
+                }
+            }
+            .alert("Import Error", isPresented: $showError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
+        }
+    }
+    
+    private func processImportedFile(_ url: URL) {
+        isProcessing = true
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                // Ensure we can access the file
+                guard url.startAccessingSecurityScopedResource() else {
+                    throw ImportError.accessDenied
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+                
+                let data = try Data(contentsOf: url)
+                var trips: [Trip] = []
+                
+                if url.pathExtension.lowercased() == "json" {
+                    trips = try parseJSON(data)
+                } else if url.pathExtension.lowercased() == "csv" {
+                    trips = try parseCSV(data)
+                } else {
+                    throw ImportError.unsupportedFormat
+                }
+                
+                DispatchQueue.main.async {
+                    isProcessing = false
+                    if !trips.isEmpty {
+                        onImport(trips)
+                        dismiss()
+                    } else {
+                        errorMessage = "No valid trips found in file"
+                        showError = true
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    isProcessing = false
+                    errorMessage = error.localizedDescription
+                    showError = true
+                }
+            }
+        }
+    }
+    
+    private func parseJSON(_ data: Data) throws -> [Trip] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        
+        let exportedTrips = try decoder.decode([TripExport].self, from: data)
+        return exportedTrips.map { exported in
+            Trip(
+                id: exported.id,
+                date: exported.date,
+                distance: exported.distance,
+                notes: exported.notes,
+                pay: exported.pay,
+                audioNotes: exported.audioNotes,
+                photoURLs: exported.photoURLs,
+                startCoordinate: exported.startCoordinate,
+                endCoordinate: exported.endCoordinate,
+                routeCoordinates: [],
+                startTime: exported.startTime,
+                endTime: exported.endTime,
+                reason: exported.reason,
+                isRecovered: exported.isRecovered,
+                averageSpeed: exported.averageSpeed
+            )
+        }
+    }
+    
+    private func parseCSV(_ data: Data) throws -> [Trip] {
+        guard let csvString = String(data: data, encoding: .utf8) else {
+            throw ImportError.invalidEncoding
+        }
+        
+        let lines = csvString.components(separatedBy: .newlines)
+        guard lines.count > 1 else {
+            throw ImportError.emptyFile
+        }
+        
+        var trips: [Trip] = []
+        let dateFormatter = ISO8601DateFormatter()
+        
+        // Skip header row
+        for line in lines.dropFirst() {
+            guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            
+            let fields = parseCSVLine(line)
+            guard fields.count >= 13 else { continue }
+            
+            // Parse the CSV fields
+            guard let id = UUID(uuidString: fields[0]),
+                  let date = dateFormatter.date(from: fields[1]),
+                  let distance = Double(fields[2]),
+                  let startTime = dateFormatter.date(from: fields[9]),
+                  let endTime = dateFormatter.date(from: fields[10]) else {
+                continue
+            }
+            
+            let notes = fields[3]
+            let pay = fields[4]
+            let reason = fields[11]
+            let isRecovered = fields[12].lowercased() == "true"
+            let averageSpeed = fields.count > 13 ? Double(fields[13]) : nil
+            
+            // Parse coordinates if present
+            var startCoord: CodableCoordinate? = nil
+            var endCoord: CodableCoordinate? = nil
+            
+            if !fields[7].isEmpty {
+                let coords = fields[7].components(separatedBy: ",")
+                if coords.count == 2, let lat = Double(coords[0]), let lon = Double(coords[1]) {
+                    startCoord = CodableCoordinate(latitude: lat, longitude: lon)
+                }
+            }
+            
+            if !fields[8].isEmpty {
+                let coords = fields[8].components(separatedBy: ",")
+                if coords.count == 2, let lat = Double(coords[0]), let lon = Double(coords[1]) {
+                    endCoord = CodableCoordinate(latitude: lat, longitude: lon)
+                }
+            }
+            
+            let trip = Trip(
+                id: id,
+                date: date,
+                distance: distance,
+                notes: notes,
+                pay: pay,
+                audioNotes: [],
+                photoURLs: [],
+                startCoordinate: startCoord,
+                endCoordinate: endCoord,
+                routeCoordinates: [],
+                startTime: startTime,
+                endTime: endTime,
+                reason: reason,
+                isRecovered: isRecovered,
+                averageSpeed: averageSpeed
+            )
+            
+            trips.append(trip)
+        }
+        
+        return trips
+    }
+    
+    private func parseCSVLine(_ line: String) -> [String] {
+        var fields: [String] = []
+        var currentField = ""
+        var insideQuotes = false
+        
+        for char in line {
+            if char == "\"" {
+                insideQuotes.toggle()
+            } else if char == "," && !insideQuotes {
+                fields.append(currentField)
+                currentField = ""
+            } else {
+                currentField.append(char)
+            }
+        }
+        fields.append(currentField)
+        
+        return fields.map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+}
+
+enum ImportError: LocalizedError {
+    case accessDenied
+    case unsupportedFormat
+    case invalidEncoding
+    case emptyFile
+    
+    var errorDescription: String? {
+        switch self {
+        case .accessDenied:
+            return "Unable to access the selected file"
+        case .unsupportedFormat:
+            return "Unsupported file format. Please select a CSV or JSON file"
+        case .invalidEncoding:
+            return "Unable to read file content"
+        case .emptyFile:
+            return "The selected file is empty"
+        }
+    }
+}
 
                         // MARK: - Trip Row View
 
@@ -1800,7 +2002,46 @@ struct TripRowView: View {
         .accessibilityHint("Double tap to view details")
     }
 }
+
+struct DocumentPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let onPick: (URL) -> Void
     
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.json, .commaSeparatedText],
+            asCopy: true
+        )
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: DocumentPicker
+        
+        init(_ parent: DocumentPicker) {
+            self.parent = parent
+        }
+        
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            parent.onPick(url)
+            parent.isPresented = false
+        }
+        
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.isPresented = false
+        }
+    }
+}
+
     // MARK: - Preview
     
 #if DEBUG

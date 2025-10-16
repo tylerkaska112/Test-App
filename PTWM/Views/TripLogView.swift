@@ -1,5 +1,3 @@
-// NOTE: Unlocking with Face ID only removes the overlay, does not dismiss the screen or switch tabs.
-
 import SwiftUI
 import MapKit
 import UniformTypeIdentifiers
@@ -94,7 +92,6 @@ struct SelectedImage: Identifiable {
     let image: UIImage
 }
 
-// For JSON export
 fileprivate struct TripExport: Codable {
     let id: UUID
     let date: Date
@@ -159,39 +156,33 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 @MainActor
 class TripLogViewModel: ObservableObject {
-    @Published var searchText: String = "" {
-        didSet { cachedFilteredTrips = [] }
-    }
-    @Published var sortOption: SortOption = .dateDescending {
-        didSet { cachedFilteredTrips = [] }
-    }
-    @Published var dateRangeFilter: DateRange = .all {
-        didSet { cachedFilteredTrips = [] }
-    }
-    @Published var minDistanceFilter: Double = 0 {
-        didSet { cachedFilteredTrips = [] }
-    }
-    @Published var maxDistanceFilter: Double = 1000 {
-        didSet { cachedFilteredTrips = [] }
-    }
-    @Published var selectedReasonFilter: String = "All" {
-        didSet { cachedFilteredTrips = [] }
-    }
+    @Published var searchText: String = ""
+    @Published var sortOption: SortOption = .dateDescending
+    @Published var dateRangeFilter: DateRange = .all
+    @Published var minDistanceFilter: Double = 0
+    @Published var maxDistanceFilter: Double = 1000
+    @Published var selectedReasonFilter: String = "All"
     @Published var selectedTripIDs: Set<UUID> = []
-    @Published var cachedFilteredTrips: [Trip] = []
+    
+    private var cachedFilteredTrips: [Trip] = []
     
     private var lastSearchText: String = ""
     private var lastSortOption: SortOption = .dateDescending
+    private var lastDateRange: DateRange = .all
+    private var lastReasonFilter: String = "All"
+    private var lastMinDistance: Double = 0
+    private var lastMaxDistance: Double = 1000
+    private var lastTripCount: Int = 0
     private var searchTask: Task<Void, Never>?
     
     func updateSearch(_ newValue: String) {
         searchTask?.cancel()
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms debounce
+            try? await Task.sleep(nanoseconds: 300_000_000)
             if !Task.isCancelled {
                 await MainActor.run {
                     self.searchText = newValue
-                    self.cachedFilteredTrips = []
+                    self.invalidateCache()
                 }
             }
         }
@@ -199,15 +190,29 @@ class TripLogViewModel: ObservableObject {
     
     func invalidateCache() {
         cachedFilteredTrips = []
+        lastSearchText = ""
+        lastSortOption = .dateDescending
+        lastDateRange = .all
+        lastReasonFilter = "All"
+        lastMinDistance = 0
+        lastMaxDistance = 1000
+        lastTripCount = 0
     }
     
     func filteredTrips(from trips: [Trip]) -> [Trip] {
-        // Check if we need to recalculate
-        if searchText != lastSearchText || sortOption != lastSortOption || cachedFilteredTrips.isEmpty {
+        let needsRecalculation = cachedFilteredTrips.isEmpty ||
+            searchText != lastSearchText ||
+            sortOption != lastSortOption ||
+            dateRangeFilter != lastDateRange ||
+            selectedReasonFilter != lastReasonFilter ||
+            minDistanceFilter != lastMinDistance ||
+            maxDistanceFilter != lastMaxDistance ||
+            trips.count != lastTripCount
+        
+        if needsRecalculation {
             let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             var results = sortedTrips(from: trips)
             
-            // Apply text search
             if !trimmedSearch.isEmpty {
                 results = results.filter {
                     $0.notes.localizedCaseInsensitiveContains(trimmedSearch) ||
@@ -215,19 +220,16 @@ class TripLogViewModel: ObservableObject {
                 }
             }
             
-            // Apply date range filter
             if let range = dateRangeFilter.dateRange {
                 results = results.filter { trip in
                     trip.startTime >= range.start && trip.startTime <= range.end
                 }
             }
             
-            // Apply reason filter
             if selectedReasonFilter != "All" {
                 results = results.filter { $0.reason == selectedReasonFilter }
             }
             
-            // Apply distance filter
             if minDistanceFilter > 0 || maxDistanceFilter < 1000 {
                 results = results.filter { trip in
                     let distanceKm = trip.distance / 1000
@@ -238,6 +240,11 @@ class TripLogViewModel: ObservableObject {
             cachedFilteredTrips = results
             lastSearchText = searchText
             lastSortOption = sortOption
+            lastDateRange = dateRangeFilter
+            lastReasonFilter = selectedReasonFilter
+            lastMinDistance = minDistanceFilter
+            lastMaxDistance = maxDistanceFilter
+            lastTripCount = trips.count
         }
         
         return cachedFilteredTrips
@@ -270,7 +277,7 @@ class TripLogViewModel: ObservableObject {
         minDistanceFilter = 0
         maxDistanceFilter = 1000
         searchText = ""
-        cachedFilteredTrips = []
+        invalidateCache()
     }
 }
 
@@ -341,7 +348,6 @@ struct TripLogView: View {
     
     var totalStats: (distance: Double, duration: TimeInterval, earnings: Double, count: Int) {
         let trips = filteredTrips
-        // trip.distance is ALREADY in miles, not meters!
         let totalDistance = trips.reduce(0) { $0 + $1.distance }
         let totalDuration = trips.reduce(0) { $0 + $1.endTime.timeIntervalSince($1.startTime) }
         let totalEarnings = trips.compactMap { Double($0.pay) }.reduce(0, +)
@@ -351,7 +357,6 @@ struct TripLogView: View {
     var extendedStats: (avgSpeed: Double, topCategory: String, costPerDistance: Double) {
         let trips = filteredTrips
         
-        // Calculate average speed correctly
         let speeds = trips.compactMap { $0.averageSpeed }
         let avgSpeed = speeds.isEmpty ? 0 : speeds.reduce(0, +) / Double(speeds.count)
         
@@ -755,7 +760,6 @@ struct TripLogView: View {
             .alert("Upgrade to Premium", isPresented: $showPremiumUpgradePrompt) {
                 Button("Maybe Later", role: .cancel) {}
                 Button("Upgrade") {
-                    // Navigate to premium upgrade screen
                 }
             } message: {
                 Text("Export features are available with Premium. Upgrade now to unlock advanced export options.")
@@ -1147,16 +1151,13 @@ struct TripLogView: View {
                             private func deleteTrip(_ trip: Trip) {
                                 guard let index = tripManager.trips.firstIndex(where: { $0.id == trip.id }) else { return }
                                 
-                                // Store for undo
                                 let deletedTrip = trip
                                 tripManager.deleteTrip(at: IndexSet(integer: index))
                                 viewModel.selectedTripIDs.remove(trip.id)
                                 viewModel.invalidateCache()
                                 
-                                // Register undo (target must be a class type)
                                 undoManager?.registerUndo(withTarget: tripManager) { manager in
                                     manager.trips.append(deletedTrip)
-                                    // Clear any selection of the restored trip and refresh filters
                                     viewModel.selectedTripIDs.remove(deletedTrip.id)
                                     viewModel.invalidateCache()
                                 }
@@ -1174,7 +1175,6 @@ struct TripLogView: View {
                                 viewModel.selectedTripIDs.removeAll()
                                 viewModel.invalidateCache()
                                 
-                                // Register undo for bulk delete (target must be a class type)
                                 undoManager?.registerUndo(withTarget: tripManager) { manager in
                                     tripsToDelete.forEach { manager.trips.append($0) }
                                     viewModel.selectedTripIDs.subtract(tripsToDelete.map { $0.id })
@@ -1210,7 +1210,6 @@ struct TripLogView: View {
                                 tripManager.trips.append(duplicatedTrip)
                                 viewModel.invalidateCache()
                                 
-                                // Register undo (target must be a class type)
                                 undoManager?.registerUndo(withTarget: tripManager) { manager in
                                     if let index = manager.trips.firstIndex(where: { $0.id == duplicatedTrip.id }) {
                                         manager.deleteTrip(at: IndexSet(integer: index))
@@ -1224,7 +1223,7 @@ struct TripLogView: View {
                             private func validateTrip(_ trip: Trip) -> Bool {
                                 return trip.distance > 0
                                     && trip.endTime > trip.startTime
-                                    && (trip.averageSpeed ?? 0) < 300 // Max 300 m/s (~670 mph) reasonable check
+                                    && (trip.averageSpeed ?? 0) < 300
                             }
                             
                             private func shareTrip(_ trip: Trip) {
@@ -1288,7 +1287,6 @@ struct TripLogView: View {
             let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
             let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
             
-            // Encode route coordinates as semicolon-separated lat,lon pairs
             let routeCoordStr = trip.routeCoordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: ";")
             
             let distanceStr = String(format: "%.4f", trip.distance)
@@ -1321,7 +1319,6 @@ struct TripLogView: View {
             let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
             let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
             
-            // Encode route coordinates as semicolon-separated lat,lon pairs
             let routeCoordStr = trip.routeCoordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: ";")
             
             let distanceStr = String(format: "%.4f", trip.distance)
@@ -1414,7 +1411,6 @@ struct TripLogView: View {
                                     audioPlayer?.prepareToPlay()
                                     audioPlayer?.play()
                                     
-                                    // Auto cleanup after playback
                                     if let duration = audioPlayer?.duration {
                                         DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.5) {
                                             stopAudioPlayer()
@@ -1641,7 +1637,6 @@ struct ImportTripsView: View {
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                // Access the security scoped resource
                 let didStartAccessing = url.startAccessingSecurityScopedResource()
                 defer {
                     if didStartAccessing {
@@ -1719,14 +1714,12 @@ struct ImportTripsView: View {
         var trips: [Trip] = []
         let dateFormatter = ISO8601DateFormatter()
         
-        // Skip header row
         for line in lines.dropFirst() {
             guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
             
             let fields = parseCSVLine(line)
             guard fields.count >= 14 else { continue }
             
-            // Parse the CSV fields
             guard let id = UUID(uuidString: fields[0]),
                   let date = dateFormatter.date(from: fields[1]),
                   let distance = Double(fields[2]),
@@ -1741,7 +1734,6 @@ struct ImportTripsView: View {
             let isRecovered = fields[13].lowercased() == "true"
             let averageSpeed = fields.count > 14 ? Double(fields[14]) : nil
             
-            // Parse coordinates if present
             var startCoord: CodableCoordinate? = nil
             var endCoord: CodableCoordinate? = nil
             var routeCoords: [CodableCoordinate] = []
@@ -1760,7 +1752,6 @@ struct ImportTripsView: View {
                 }
             }
             
-            // Parse route coordinates (semicolon-separated lat,lon pairs)
             if !fields[9].isEmpty {
                 let coordPairs = fields[9].components(separatedBy: ";")
                 for pair in coordPairs {
@@ -1844,14 +1835,13 @@ struct TripRowView: View {
     let onSelectionToggle: () -> Void
     let onTripTap: () -> Void
     
-    // Helper function to format distance - trip.distance is already in miles!
     private func formatDistanceFromMiles(_ miles: Double) -> String {
         if miles == 0 {
             return useKilometers ? "0 km" : "0 mi"
         }
         
         if useKilometers {
-            let km = miles * 1.60934  // Convert miles to kilometers
+            let km = miles * 1.60934
             return String(format: "%.2f km", km)
         } else {
             return String(format: "%.2f mi", miles)
@@ -1875,21 +1865,18 @@ struct TripRowView: View {
     }
     
     private var formattedAverageSpeed: String {
-        // First try to use the stored average speed if available
         if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
             return AverageSpeedFormatter.string(forMetersPerSecond: avgSpeed, useKilometers: useKilometers)
         }
         
-        // Calculate from distance and duration
         let duration = trip.endTime.timeIntervalSince(trip.startTime)
         
         guard duration > 0 else {
             return useKilometers ? "0 km/h" : "0 mph"
         }
         
-        // trip.distance is in miles
         let distanceMiles = trip.distance
-        let speedMPH = (distanceMiles / duration) * 3600 // miles per hour
+        let speedMPH = (distanceMiles / duration) * 3600
         
         if useKilometers {
             let speedKMH = speedMPH * 1.60934
@@ -1905,7 +1892,6 @@ struct TripRowView: View {
     
     var body: some View {
         return HStack(spacing: 12) {
-            // Selection Button
             Button(action: onSelectionToggle) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isSelected ? .accentColor : .secondary)
@@ -1915,15 +1901,12 @@ struct TripRowView: View {
             .buttonStyle(PlainButtonStyle())
             .accessibilityLabel(isSelected ? "Deselect trip" : "Select trip")
             
-            // Main Content Button
             Button(action: onTripTap) {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Header: Date/Time
                     Text(trip.startTime.formatted(date: .abbreviated, time: .shortened))
                         .font(.headline)
                         .foregroundColor(.primary)
                     
-                    // DISTANCE - trip.distance is already in miles!
                     HStack(spacing: 6) {
                         Image(systemName: "road.lanes")
                             .font(.subheadline)
@@ -1935,9 +1918,7 @@ struct TripRowView: View {
                             .foregroundColor(.primary)
                     }
                     
-                    // Secondary Info Row
                     HStack(spacing: 12) {
-                        // Duration
                         HStack(spacing: 4) {
                             Image(systemName: "clock")
                                 .font(.caption)
@@ -1946,7 +1927,6 @@ struct TripRowView: View {
                         }
                         .foregroundColor(.secondary)
                         
-                        // Average Speed - now always shows
                         HStack(spacing: 4) {
                             Image(systemName: "speedometer")
                                 .font(.caption)
@@ -1957,7 +1937,6 @@ struct TripRowView: View {
                         
                         Spacer()
                         
-                        // Media & Status Indicators
                         HStack(spacing: 6) {
                             if !trip.photoURLs.isEmpty {
                                 Image(systemName: "photo")
@@ -1977,7 +1956,6 @@ struct TripRowView: View {
                         }
                     }
                     
-                    // Category Badge
                     if !trip.reason.isEmpty {
                         Text(trip.reason)
                             .font(.subheadline)
@@ -1987,7 +1965,6 @@ struct TripRowView: View {
                             .foregroundColor(.secondary)
                     }
                     
-                    // Notes
                     if !trip.notes.isEmpty {
                         Text(trip.notes)
                             .font(.subheadline)
@@ -1995,7 +1972,6 @@ struct TripRowView: View {
                             .lineLimit(2)
                     }
                     
-                    // Pay
                     if !trip.pay.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "dollarsign.circle.fill")
@@ -2011,7 +1987,6 @@ struct TripRowView: View {
             }
             .buttonStyle(PlainButtonStyle())
             
-            // Chevron
             Button(action: onTripTap) {
                 Image(systemName: "chevron.right")
                     .foregroundColor(.secondary)

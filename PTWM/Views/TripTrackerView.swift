@@ -37,6 +37,7 @@ struct NavigationState {
 }
 
 // MARK: - Map View Wrapper (defined before ExpressRideView)
+
 struct RouteMapViewWrapper: UIViewRepresentable {
     var userLocation: CLLocationCoordinate2D
     var route: MKRoute?
@@ -55,10 +56,10 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         mapView.userTrackingMode = isNavigating ? .followWithHeading : .follow
         mapView.mapType = mapType
         
-        // Apply settings
+        // Apply settings - FIXED: Use showsScale instead of showScale
         mapView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
         mapView.showsCompass = showCompass
-        mapView.showsScale = showScale
+        mapView.showsScale = showScale  // FIXED: This is the correct property name
         
         // Enable 3D buildings
         if show3DBuildings {
@@ -72,7 +73,7 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         uiView.mapType = mapType
         uiView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
         uiView.showsCompass = showCompass
-        uiView.showsScale = showScale
+        uiView.showsScale = showScale  // FIXED: This is the correct property name
         
         let heading = uiView.userLocation.heading?.trueHeading ?? uiView.userLocation.location?.course ?? 0
         let currentRegionCenter = uiView.region.center

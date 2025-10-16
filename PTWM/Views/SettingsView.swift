@@ -20,11 +20,16 @@ fileprivate let navigationVoiceIdentifiers: [String] = navigationVoices.map { $0
 class LocationPermissionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var status: CLAuthorizationStatus = CLLocationManager.authorizationStatus()
     private let manager = CLLocationManager()
+    
     override init() {
         super.init()
         manager.delegate = self
     }
-    func request() { manager.requestWhenInUseAuthorization() }
+    
+    func request() {
+        manager.requestWhenInUseAuthorization()
+    }
+    
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         self.status = status
     }
@@ -217,7 +222,19 @@ struct SettingsView: View {
         let build = dict?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
     }
+    
+    private var totalStorageUsed: Int64 {
+        StorageCalculator.calculateTripStorageSize(trips: tripManager.trips)
+    }
 
+    private var storageBreakdown: StorageBreakdown {
+        StorageCalculator.storageBreakdown(trips: tripManager.trips)
+    }
+
+    private var formattedStorageSize: String {
+        StorageCalculator.formatBytes(totalStorageUsed)
+    }
+    
     private func updateNotificationPermissionStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             DispatchQueue.main.async {
@@ -261,6 +278,9 @@ struct SettingsView: View {
                         
                         // Data Management
                         dataManagementCard
+                        
+                        // Storage Usage
+                        storageUsageCard
                         
                         // About & Support
                         aboutCard
@@ -713,9 +733,16 @@ struct SettingsView: View {
                 Toggle(isOn: $batterySavingMode) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Battery Saving Mode")
-                        Text("Reduced GPS accuracy")
+                        Text("Reduced GPS accuracy (~100m)")
                             .font(.caption)
                             .foregroundColor(.secondary)
+                    }
+                }
+                .onChange(of: batterySavingMode) { newValue in
+                    if newValue {
+                        // Show confirmation that battery saving is active
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
                     }
                 }
                 
@@ -726,13 +753,49 @@ struct SettingsView: View {
                             Spacer()
                             Text("\(Int(gpsAccuracyMeters))m")
                                 .foregroundColor(.secondary)
+                                .font(.system(.body, design: .monospaced))
                         }
+                        
                         Slider(value: $gpsAccuracyMeters, in: 5...100, step: 5)
-                        Text("Lower = more accurate, higher battery use")
+                            .onChange(of: gpsAccuracyMeters) { newValue in
+                                // Provide haptic feedback when changing accuracy
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                            }
+                        
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(accuracyDescription)
+                                    .font(.caption)
+                                    .foregroundColor(accuracyColor)
+                                    .bold()
+                                Text("Lower = more accurate, higher battery use")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: accuracyIcon)
+                                .foregroundColor(accuracyColor)
+                                .font(.title3)
+                        }
+                    }
+                    .padding(.top, 4)
+                } else {
+                    // Show info when battery saving is active
+                    HStack(spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("GPS accuracy fixed at 100m to conserve battery")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(8)
                 }
+                
+                Divider()
                 
                 Toggle(isOn: $enableSpeedTracking) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -793,6 +856,116 @@ struct SettingsView: View {
         }
     }
     
+    private var storageUsageCard: some View {
+        SettingsCard(icon: "internaldrive.fill", title: "Storage Usage", iconColor: .orange) {
+            VStack(spacing: 16) {
+                // Total storage display
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Total Storage Used")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(formattedStorageSize)
+                            .font(.title.bold())
+                            .foregroundColor(.primary)
+                    }
+                    Spacer()
+                    Image(systemName: "externaldrive.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange.opacity(0.5))
+                }
+                .padding()
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(12)
+                
+                Divider()
+                
+                // Storage breakdown
+                VStack(spacing: 12) {
+                    StorageBreakdownRow(
+                        icon: "doc.text.fill",
+                        label: "Trip Data",
+                        size: storageBreakdown.tripData,
+                        total: storageBreakdown.total,
+                        color: .blue
+                    )
+                    
+                    StorageBreakdownRow(
+                        icon: "waveform",
+                        label: "Audio Notes",
+                        size: storageBreakdown.audioFiles,
+                        total: storageBreakdown.total,
+                        color: .orange
+                    )
+                    
+                    StorageBreakdownRow(
+                        icon: "photo.fill",
+                        label: "Photos",
+                        size: storageBreakdown.photoFiles,
+                        total: storageBreakdown.total,
+                        color: .purple
+                    )
+                    
+                    StorageBreakdownRow(
+                        icon: "map.fill",
+                        label: "Route Data",
+                        size: storageBreakdown.routeData,
+                        total: storageBreakdown.total,
+                        color: .green
+                    )
+                }
+                
+                // Quick stats
+                HStack(spacing: 20) {
+                    VStack(spacing: 4) {
+                        Text("\(tripManager.trips.count)")
+                            .font(.headline)
+                        Text("Trips")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                        .frame(height: 30)
+                    
+                    VStack(spacing: 4) {
+                        let audioCount = tripManager.trips.reduce(0) { $0 + $1.audioNotes.count }
+                        Text("\(audioCount)")
+                            .font(.headline)
+                        Text("Audio")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    Divider()
+                        .frame(height: 30)
+                    
+                    VStack(spacing: 4) {
+                        let photoCount = tripManager.trips.reduce(0) { $0 + $1.photoURLs.count }
+                        Text("\(photoCount)")
+                            .font(.headline)
+                        Text("Photos")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.top, 8)
+                
+                // Clear data button
+                Button(action: clearAllTripData) {
+                    HStack {
+                        Label("Clear All Trip Data", systemImage: "trash.fill")
+                            .foregroundColor(.red)
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+    
     private var aboutCard: some View {
         SettingsCard(icon: "info.circle.fill", title: "About & Support", iconColor: .gray) {
             VStack(spacing: 16) {
@@ -845,6 +1018,51 @@ struct SettingsView: View {
                     Spacer()
                 }
             }
+        }
+    }
+    
+    private var accuracyDescription: String {
+        switch gpsAccuracyMeters {
+        case 0..<15:
+            return "Excellent (Best)"
+        case 15..<30:
+            return "Very Good"
+        case 30..<50:
+            return "Good"
+        case 50..<75:
+            return "Fair"
+        default:
+            return "Basic"
+        }
+    }
+
+    private var accuracyColor: Color {
+        switch gpsAccuracyMeters {
+        case 0..<15:
+            return .green
+        case 15..<30:
+            return .blue
+        case 30..<50:
+            return .yellow
+        case 50..<75:
+            return .orange
+        default:
+            return .red
+        }
+    }
+
+    private var accuracyIcon: String {
+        switch gpsAccuracyMeters {
+        case 0..<15:
+            return "location.fill"
+        case 15..<30:
+            return "location.fill"
+        case 30..<50:
+            return "location.circle.fill"
+        case 50..<75:
+            return "location.circle"
+        default:
+            return "location.slash.fill"
         }
     }
     
@@ -1092,6 +1310,25 @@ struct SettingsView: View {
         guard let jsonData = try? JSONEncoder().encode(tripManager.trips),
               let jsonString = String(data: jsonData, encoding: .utf8) else { return }
         shareContent(jsonString, filename: "waylon_backup_\(Date().ISO8601Format()).json")
+    }
+    
+    private func clearAllTripData() {
+        let alert = UIAlertController(
+            title: "Clear All Trip Data?",
+            message: "This will permanently delete all trips, audio notes, and photos. This action cannot be undone.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete All", style: .destructive) { _ in
+            tripManager.trips.removeAll()
+        })
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first,
+           let rootVC = window.rootViewController {
+            rootVC.present(alert, animated: true)
+        }
     }
     
     private func generateTripCSV() -> String {
@@ -2108,6 +2345,50 @@ struct CategoryManagerView: View {
         all = all.filter { $0 != "Other" }.sorted() + ["Other"]
         if let data = try? JSONEncoder().encode(all) {
             tripCategoriesData = String(data: data, encoding: .utf8) ?? tripCategoriesData
+        }
+    }
+}
+
+struct StorageBreakdownRow: View {
+    let icon: String
+    let label: String
+    let size: Int64
+    let total: Int64
+    let color: Color
+    
+    private var percentage: Double {
+        guard total > 0 else { return 0 }
+        return Double(size) / Double(total)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 20)
+                Text(label)
+                    .font(.subheadline)
+                Spacer()
+                Text(StorageCalculator.formatBytes(size))
+                    .font(.subheadline.bold())
+                    .foregroundColor(.secondary)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 6)
+                        .cornerRadius(3)
+                    
+                    Rectangle()
+                        .fill(color)
+                        .frame(width: geometry.size.width * percentage, height: 6)
+                        .cornerRadius(3)
+                }
+            }
+            .frame(height: 6)
         }
     }
 }

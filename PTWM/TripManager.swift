@@ -16,8 +16,8 @@ struct FavoriteAddress: Codable, Identifiable, Equatable {
     var name: String
     var address: String
     var coordinate: CodableCoordinate?
-    var category: String // NEW: Home, Work, Client, etc.
-    var notes: String // NEW: Additional context
+    var category: String
+    var notes: String
     
     init(id: UUID = UUID(), name: String, address: String, coordinate: CodableCoordinate? = nil, category: String = "Other", notes: String = "") {
         self.id = id
@@ -41,9 +41,22 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("dailyStreak") private var dailyStreak: Int = 0
     @AppStorage("longestStreak") private var longestStreak: Int = 0
     @AppStorage("lastTripDate") private var lastTripDate: String = ""
-    @AppStorage("smartPauseEnabled") private var smartPauseEnabled: Bool = true // NEW
-    @AppStorage("batteryOptimizationEnabled") private var batteryOptimizationEnabled: Bool = true // NEW
-    @AppStorage("roundTripDetection") private var roundTripDetection: Bool = true // NEW
+    @AppStorage("smartPauseEnabled") private var smartPauseEnabled: Bool = true
+    @AppStorage("batteryOptimizationEnabled") private var batteryOptimizationEnabled: Bool = true
+    @AppStorage("roundTripDetection") private var roundTripDetection: Bool = true
+    
+    // NEW: Add observers for battery saving mode and GPS accuracy
+    @AppStorage("batterySavingMode") private var batterySavingMode: Bool = false {
+        didSet {
+            updateLocationAccuracy()
+        }
+    }
+    
+    @AppStorage("gpsAccuracyMeters") private var gpsAccuracyMeters: Double = 10.0 {
+        didSet {
+            updateLocationAccuracy()
+        }
+    }
     
     var lifetimeDriveHours: Double { _lifetimeDriveHours }
     
@@ -64,11 +77,11 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var favoriteAddresses: [FavoriteAddress] = []
     @Published var tripJustAutoStarted: Bool = false
     @Published var unlockedAchievement: AchievementBadge? = nil
-    @Published var currentSpeed: Double = 0.0 // NEW: Real-time speed in MPH
-    @Published var currentTripDuration: TimeInterval = 0 // NEW: Real-time duration
-    @Published var estimatedArrivalTime: Date? = nil // NEW: ETA to destination
-    @Published var isPaused: Bool = false // NEW: Trip pause state
-    @Published var batteryLevel: Float = 1.0 // NEW: Current battery level
+    @Published var currentSpeed: Double = 0.0
+    @Published var currentTripDuration: TimeInterval = 0
+    @Published var estimatedArrivalTime: Date? = nil
+    @Published var isPaused: Bool = false
+    @Published var batteryLevel: Float = 1.0
     
     // MARK: - Private Properties
     private var locationManager = CLLocationManager()
@@ -81,21 +94,19 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var currentTripStartLocation: CLLocationCoordinate2D?
     private var currentTripStartTime: Date? = nil
     private var currentRoute: [CLLocationCoordinate2D] = []
-    private var pausedRoute: [CLLocationCoordinate2D] = [] // NEW: Route before pause
-    private var pauseStartTime: Date? = nil // NEW
-    private var totalPausedDuration: TimeInterval = 0 // NEW
+    private var pausedRoute: [CLLocationCoordinate2D] = []
+    private var pauseStartTime: Date? = nil
+    private var totalPausedDuration: TimeInterval = 0
     
     private var tripWasAutoStarted: Bool = false
     private var speedCheckTimer: Timer?
-    private var durationTimer: Timer? // NEW
+    private var durationTimer: Timer?
     private var belowThresholdStartDate: Date?
     private var lastSpeed: CLLocationSpeed?
     
-    // NEW: Smart pause detection
     private var stationaryStartTime: Date?
-    private let smartPauseThreshold: TimeInterval = 120 // 2 minutes stationary = auto-pause
+    private let smartPauseThreshold: TimeInterval = 120
     
-    // NEW: Round trip detection
     private var possibleRoundTrip: Bool = false
     
     private var isTripStarted: Bool {
@@ -120,9 +131,11 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.delegate = self
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.distanceFilter = kCLDistanceFilterNone
-        locationManager.activityType = .automotiveNavigation // NEW: Better for driving
+        locationManager.activityType = .automotiveNavigation
+        
+        // Apply initial location accuracy settings
+        updateLocationAccuracy()
+        
         locationManager.startUpdatingLocation()
         
         loadTrips()
@@ -137,7 +150,35 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         restoreOngoingTripIfNeeded()
     }
     
-    // MARK: - Battery Monitoring (NEW)
+    // MARK: - NEW: Update Location Accuracy Based on Settings
+    private func updateLocationAccuracy() {
+        if batterySavingMode {
+            // Battery saving mode: use lower accuracy
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            locationManager.distanceFilter = 50
+        } else {
+            // Use custom GPS accuracy from slider
+            let accuracy: CLLocationAccuracy
+            
+            switch gpsAccuracyMeters {
+            case 0..<10:
+                accuracy = kCLLocationAccuracyBest
+            case 10..<20:
+                accuracy = kCLLocationAccuracyNearestTenMeters
+            case 20..<50:
+                accuracy = kCLLocationAccuracyNearestTenMeters
+            case 50..<100:
+                accuracy = kCLLocationAccuracyHundredMeters
+            default:
+                accuracy = kCLLocationAccuracyHundredMeters
+            }
+            
+            locationManager.desiredAccuracy = accuracy
+            locationManager.distanceFilter = gpsAccuracyMeters
+        }
+    }
+    
+    // MARK: - Battery Monitoring
     private func monitorBatteryLevel() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         batteryLevel = UIDevice.current.batteryLevel
@@ -151,28 +192,30 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private func adjustLocationAccuracyForBattery() {
         guard batteryOptimizationEnabled else { return }
         
+        // Only adjust if NOT in battery saving mode (which has its own fixed settings)
+        guard !batterySavingMode else { return }
+        
         if batteryLevel < 0.20 {
             locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
             locationManager.distanceFilter = 50
+            print("Low battery detected: Reducing accuracy to save power")
         } else if batteryLevel < 0.50 {
             locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             locationManager.distanceFilter = 10
         } else {
-            locationManager.desiredAccuracy = kCLLocationAccuracyBest
-            locationManager.distanceFilter = kCLDistanceFilterNone
+            // Restore user's preferred accuracy
+            updateLocationAccuracy()
         }
     }
     
-    // MARK: - Notifications Setup (NEW)
+    // MARK: - Notifications Setup
     private func setupNotifications() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                print("Notification permission granted")
             }
         }
-    }
     
-    // MARK: - Trip Pause/Resume (NEW)
+    
+    // MARK: - Trip Pause/Resume
     func pauseTrip() {
         guard !isPaused, currentTripStartLocation != nil else { return }
         isPaused = true
@@ -196,18 +239,18 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         pauseStartTime = nil
         
-        // Restore location accuracy
-        adjustLocationAccuracyForBattery()
+        // Restore location accuracy based on current settings
+        updateLocationAccuracy()
         startDurationTimer()
         
         sendNotification(title: "Trip Resumed", body: "Tracking your trip again.")
     }
     
-    // MARK: - Smart Pause Detection (NEW)
+    // MARK: - Smart Pause Detection
     private func checkForSmartPause(speed: CLLocationSpeed) {
         guard smartPauseEnabled, !isPaused, currentTripStartLocation != nil else { return }
         
-        if speed < 0.5 { // Essentially stationary (< 1 mph)
+        if speed < 0.5 {
             if stationaryStartTime == nil {
                 stationaryStartTime = Date()
             } else if let startTime = stationaryStartTime,
@@ -220,7 +263,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    // MARK: - Round Trip Detection (NEW)
+    // MARK: - Round Trip Detection
     private func checkForRoundTrip(currentLocation: CLLocationCoordinate2D) {
         guard roundTripDetection, let startLocation = currentTripStartLocation else { return }
         
@@ -228,14 +271,13 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         let currentCLLocation = CLLocation(latitude: currentLocation.latitude, longitude: currentLocation.longitude)
         let distance = currentCLLocation.distance(from: startCLLocation)
         
-        // If within 100 meters of start location
-        if distance < 100 && currentDistance > 0.5 { // More than 0.5 miles traveled
+        if distance < 100 && currentDistance > 0.5 {
             possibleRoundTrip = true
             sendNotification(title: "Round Trip Detected", body: "You're back near your starting point. End trip?")
         }
     }
     
-    // MARK: - Duration Timer (NEW)
+    // MARK: - Duration Timer
     private func startDurationTimer() {
         durationTimer?.invalidate()
         durationTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -342,7 +384,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         UserDefaults.standard.removeObject(forKey: currentTripKey)
     }
     
-    // MARK: - Notification Helper (NEW)
+    // MARK: - Notification Helper
     private func sendNotification(title: String, body: String) {
         let content = UNMutableNotificationContent()
         content.title = title
@@ -460,7 +502,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         sendNotification(title: "Trip Completed", body: String(format: "%.2f miles tracked", newTrip.distance))
     }
     
-    // MARK: - Streak Management (Improved)
+    // MARK: - Streak Management
     private func updateStreaks() {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -486,7 +528,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    // MARK: - Achievement Checking (Enhanced)
+    // MARK: - Achievement Checking
     private func checkAchievements(newTrip: Trip) {
         let mileageThresholds: [(Double, String, String)] = [
             (1, "figure.walk", "First Mile"),
@@ -527,9 +569,8 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         userLocation = newLocation.coordinate
         
-        // Update current speed
         if newLocation.speed >= 0 {
-            currentSpeed = newLocation.speed * 2.23694 // Convert m/s to mph
+            currentSpeed = newLocation.speed * 2.23694
             lastSpeed = newLocation.speed
         }
         
@@ -545,16 +586,13 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             currentRoute.append(newLocation.coordinate)
             autosaveOngoingTripState()
             
-            // Check for round trip
             checkForRoundTrip(currentLocation: newLocation.coordinate)
             
-            // Check for smart pause
             if let speed = lastSpeed {
                 checkForSmartPause(speed: speed)
             }
         }
         
-        // Auto trip detection
         handleAutoTripDetection(newLocation: newLocation)
     }
     
@@ -615,7 +653,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         
         if status == .authorizedAlways || status == .authorizedWhenInUse {
-            print("Location authorized")
         }
     }
     
@@ -732,7 +769,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         autosaveOngoingTripState()
     }
     
-    // NEW: Export trip data
     func exportTrips() -> String {
         var csv = "Date,Distance (mi),Duration (hrs),Notes,Pay,Reason\n"
         for trip in trips {

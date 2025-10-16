@@ -105,6 +105,7 @@ fileprivate struct TripExport: Codable {
     let photoURLs: [URL]
     let startCoordinate: CodableCoordinate?
     let endCoordinate: CodableCoordinate?
+    let routeCoordinates: [CodableCoordinate]
     let startTime: Date
     let endTime: Date
     let reason: String
@@ -121,6 +122,7 @@ fileprivate struct TripExport: Codable {
         self.photoURLs = trip.photoURLs
         self.startCoordinate = trip.startCoordinate
         self.endCoordinate = trip.endCoordinate
+        self.routeCoordinates = trip.routeCoordinates
         self.startTime = trip.startTime
         self.endTime = trip.endTime
         self.reason = trip.reason
@@ -1278,56 +1280,66 @@ struct TripLogView: View {
                                 }
                             }
                             
-                            private func exportTripLogsToCSV(selected: [Trip]) {
-                                let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
-                                let rows = selected.map { trip in
-                                    let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
-                                    let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
-                                    let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-                                    let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-                                    let distanceStr = String(format: "%.4f", trip.distance)
-                                    let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
-                                    let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
-                                    let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
-                                    return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
-                                }.joined(separator: "\n")
-                                
-                                let csvString = header + rows
-                                
-                                do {
-                                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).csv")
-                                    try csvString.write(to: tempURL, atomically: true, encoding: .utf8)
-                                    exportURL = tempURL
-                                    showShareSheet = true
-                                } catch {
-                                    exportError = .fileWriteFailed(error)
-                                    showExportError = true
-                                    print("Failed to create CSV file: \(error)")
-                                }
-                            }
+    private func exportTripLogsToCSV(selected: [Trip]) {
+        let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,routeCoordinates,startTime,endTime,reason,isRecovered,averageSpeed\n"
+        let rows = selected.map { trip in
+            let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
+            let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
+            let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+            let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+            
+            // Encode route coordinates as semicolon-separated lat,lon pairs
+            let routeCoordStr = trip.routeCoordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: ";")
+            
+            let distanceStr = String(format: "%.4f", trip.distance)
+            let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
+            let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
+            let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
+            
+            return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\"\(routeCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
+        }.joined(separator: "\n")
+        
+        let csvString = header + rows
+        
+        do {
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("TripLogs_\(Date().timeIntervalSince1970).csv")
+            try csvString.write(to: tempURL, atomically: true, encoding: .utf8)
+            exportURL = tempURL
+            showShareSheet = true
+        } catch {
+            exportError = .fileWriteFailed(error)
+            showExportError = true
+            print("Failed to create CSV file: \(error)")
+        }
+    }
                             
-                            private func copyCSVToClipboard(selected: [Trip]) {
-                                let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,startTime,endTime,reason,isRecovered,averageSpeed\n"
-                                let rows = selected.map { trip in
-                                    let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
-                                    let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
-                                    let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-                                    let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
-                                    let distanceStr = String(format: "%.4f", trip.distance)
-                                    let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
-                                    let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
-                                    let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
-                                    return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
-                                }.joined(separator: "\n")
-                                
-                                let csvString = header + rows
-                                UIPasteboard.general.string = csvString
-                                
-                                withAnimation {
-                                    showCopyToast = true
-                                    copyFormat = "CSV"
-                                }
-                            }
+    private func copyCSVToClipboard(selected: [Trip]) {
+        let header = "id,date,distance,notes,pay,audioNotes,photoURLs,startCoordinate,endCoordinate,routeCoordinates,startTime,endTime,reason,isRecovered,averageSpeed\n"
+        let rows = selected.map { trip in
+            let audioNotesStr = trip.audioNotes.map { $0.absoluteString }.joined(separator: ";")
+            let photoURLsStr = trip.photoURLs.map { $0.absoluteString }.joined(separator: ";")
+            let startCoordStr = trip.startCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+            let endCoordStr = trip.endCoordinate.map { "\($0.latitude),\($0.longitude)" } ?? ""
+            
+            // Encode route coordinates as semicolon-separated lat,lon pairs
+            let routeCoordStr = trip.routeCoordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: ";")
+            
+            let distanceStr = String(format: "%.4f", trip.distance)
+            let avgSpeedStr = trip.averageSpeed != nil ? String(format: "%.4f", trip.averageSpeed!) : ""
+            let notesEscaped = trip.notes.replacingOccurrences(of: "\"", with: "\"\"")
+            let reasonEscaped = trip.reason.replacingOccurrences(of: "\"", with: "\"\"")
+            
+            return "\(trip.id.uuidString),\(trip.date),\(distanceStr),\"\(notesEscaped)\",\"\(trip.pay)\",\"\(audioNotesStr)\",\"\(photoURLsStr)\",\"\(startCoordStr)\",\"\(endCoordStr)\",\"\(routeCoordStr)\",\(trip.startTime),\(trip.endTime),\"\(reasonEscaped)\",\(trip.isRecovered),\(avgSpeedStr)"
+        }.joined(separator: "\n")
+        
+        let csvString = header + rows
+        UIPasteboard.general.string = csvString
+        
+        withAnimation {
+            showCopyToast = true
+            copyFormat = "CSV"
+        }
+    }
                             
                             private func exportTripLogsToJSON(selected: [Trip]) {
                                 do {
@@ -1629,11 +1641,13 @@ struct ImportTripsView: View {
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                // Ensure we can access the file
-                guard url.startAccessingSecurityScopedResource() else {
-                    throw ImportError.accessDenied
+                // Access the security scoped resource
+                let didStartAccessing = url.startAccessingSecurityScopedResource()
+                defer {
+                    if didStartAccessing {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                 }
-                defer { url.stopAccessingSecurityScopedResource() }
                 
                 let data = try Data(contentsOf: url)
                 var trips: [Trip] = []
@@ -1682,7 +1696,7 @@ struct ImportTripsView: View {
                 photoURLs: exported.photoURLs,
                 startCoordinate: exported.startCoordinate,
                 endCoordinate: exported.endCoordinate,
-                routeCoordinates: [],
+                routeCoordinates: exported.routeCoordinates,
                 startTime: exported.startTime,
                 endTime: exported.endTime,
                 reason: exported.reason,
@@ -1710,26 +1724,27 @@ struct ImportTripsView: View {
             guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
             
             let fields = parseCSVLine(line)
-            guard fields.count >= 13 else { continue }
+            guard fields.count >= 14 else { continue }
             
             // Parse the CSV fields
             guard let id = UUID(uuidString: fields[0]),
                   let date = dateFormatter.date(from: fields[1]),
                   let distance = Double(fields[2]),
-                  let startTime = dateFormatter.date(from: fields[9]),
-                  let endTime = dateFormatter.date(from: fields[10]) else {
+                  let startTime = dateFormatter.date(from: fields[10]),
+                  let endTime = dateFormatter.date(from: fields[11]) else {
                 continue
             }
             
             let notes = fields[3]
             let pay = fields[4]
-            let reason = fields[11]
-            let isRecovered = fields[12].lowercased() == "true"
-            let averageSpeed = fields.count > 13 ? Double(fields[13]) : nil
+            let reason = fields[12]
+            let isRecovered = fields[13].lowercased() == "true"
+            let averageSpeed = fields.count > 14 ? Double(fields[14]) : nil
             
             // Parse coordinates if present
             var startCoord: CodableCoordinate? = nil
             var endCoord: CodableCoordinate? = nil
+            var routeCoords: [CodableCoordinate] = []
             
             if !fields[7].isEmpty {
                 let coords = fields[7].components(separatedBy: ",")
@@ -1745,6 +1760,17 @@ struct ImportTripsView: View {
                 }
             }
             
+            // Parse route coordinates (semicolon-separated lat,lon pairs)
+            if !fields[9].isEmpty {
+                let coordPairs = fields[9].components(separatedBy: ";")
+                for pair in coordPairs {
+                    let coords = pair.components(separatedBy: ",")
+                    if coords.count == 2, let lat = Double(coords[0]), let lon = Double(coords[1]) {
+                        routeCoords.append(CodableCoordinate(latitude: lat, longitude: lon))
+                    }
+                }
+            }
+            
             let trip = Trip(
                 id: id,
                 date: date,
@@ -1755,7 +1781,7 @@ struct ImportTripsView: View {
                 photoURLs: [],
                 startCoordinate: startCoord,
                 endCoordinate: endCoord,
-                routeCoordinates: [],
+                routeCoordinates: routeCoords,
                 startTime: startTime,
                 endTime: endTime,
                 reason: reason,
@@ -1809,7 +1835,6 @@ enum ImportError: LocalizedError {
         }
     }
 }
-
                         // MARK: - Trip Row View
 
 struct TripRowView: View {
@@ -2052,4 +2077,5 @@ struct DocumentPicker: UIViewControllerRepresentable {
         }
     }
 #endif
+
 

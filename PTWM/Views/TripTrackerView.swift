@@ -150,6 +150,15 @@ struct RouteMapViewWrapper: UIViewRepresentable {
     }
 }
 
+// MARK: - Search Results
+struct EnhancedSearchResult: Identifiable {
+    let id = UUID()
+    let completion: MKLocalSearchCompletion
+    var distance: Double?
+    var travelTime: TimeInterval?
+    var isCalculating: Bool = false
+}
+
 // MARK: - Main Express Ride View
 struct ExpressRideView: View {
     @EnvironmentObject private var tripManager: TripManager
@@ -168,6 +177,8 @@ struct ExpressRideView: View {
     @State private var navigationState = NavigationState()
     
     // UI State
+    @State private var activeSearchTasks: [UUID: Task<Void, Never>] = [:]
+    @State private var enhancedSearchResults: [EnhancedSearchResult] = []
     @State private var showSpeedWarning = false
     @State private var isTripStarted = false
     @State private var showAddressPanel = true
@@ -296,8 +307,9 @@ struct ExpressRideView: View {
         .onChange(of: tripManager.userLocation) { _ in
             handleLocationUpdate()
         }
-        .onReceive(searchCompleter.$suggestions) {
-            addressSuggestions = $0
+        .onReceive(searchCompleter.$suggestions) { suggestions in
+            addressSuggestions = suggestions
+            updateEnhancedSearchResults(from: suggestions)
         }
         .onChange(of: navigationState.currentStepIndex) { _ in
             handleStepChange()
@@ -770,9 +782,14 @@ struct ExpressRideView: View {
     
     private var addressEntryPanel: some View {
         VStack(spacing: 0) {
-            ZStack {
+            // Search Bar
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                    .font(.system(size: 18))
+                
                 TextField(
-                    "Enter destination address",
+                    "Search for a place or address",
                     text: $navigationState.destinationAddress,
                     onEditingChanged: { isEditing in
                         showSuggestions = isEditing && !navigationState.destinationAddress.isEmpty
@@ -781,20 +798,232 @@ struct ExpressRideView: View {
                         }
                     }
                 )
-                .padding(10)
-                .background(.ultraThinMaterial)
-                .cornerRadius(12)
+                .font(.system(size: 16))
                 .accessibilityIdentifier("DestinationAddressTextField")
                 .accessibilityLabel("Destination address")
                 .accessibilityHint("Enter the address you want to navigate to")
                 .onChange(of: navigationState.destinationAddress) { newValue in
                     handleAddressChange(newValue)
                 }
+                
+                if !navigationState.destinationAddress.isEmpty {
+                    Button(action: {
+                        navigationState.destinationAddress = ""
+                        showSuggestions = false
+                        addressSuggestions = []
+                        enhancedSearchResults = []
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
+            .padding(14)
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(showSuggestions ? Color.accentColor : Color.clear, lineWidth: 2)
+            )
             .padding(.horizontal, 8)
             
-            if showSuggestions && !addressSuggestions.isEmpty {
-                suggestionsList
+            // Enhanced Suggestions List
+            if showSuggestions && !enhancedSearchResults.isEmpty {
+                enhancedSuggestionsList
+            }
+        }
+    }
+    
+    private var enhancedSuggestionsList: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(enhancedSearchResults) { result in
+                    Button(action: {
+                        selectSuggestion(result.completion)
+                    }) {
+                        HStack(spacing: 12) {
+                            // Location Icon
+                            ZStack {
+                                Circle()
+                                    .fill(Color.accentColor.opacity(0.1))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "mappin.circle.fill")
+                                    .foregroundColor(.accentColor)
+                                    .font(.system(size: 20))
+                            }
+                            
+                            // Address Information
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(result.completion.title)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                
+                                if !result.completion.subtitle.isEmpty {
+                                    Text(result.completion.subtitle)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                                
+                                // Distance and Time Info
+                                HStack(spacing: 12) {
+                                    if result.isCalculating {
+                                        HStack(spacing: 4) {
+                                            ProgressView()
+                                                .scaleEffect(0.7)
+                                            Text("Calculating...")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.secondary)
+                                        }
+                                    } else if let distance = result.distance, let time = result.travelTime {
+                                        // Distance Badge
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "location.fill")
+                                                .font(.system(size: 10))
+                                            Text(DistanceFormatterHelper.string(for: distance, useKilometers: useKilometers))
+                                                .font(.system(size: 12, weight: .medium))
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.blue.opacity(0.1))
+                                        .foregroundColor(.blue)
+                                        .cornerRadius(6)
+                                        
+                                        // Time Badge
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "clock.fill")
+                                                .font(.system(size: 10))
+                                            Text(formatTravelTime(time))
+                                                .font(.system(size: 12, weight: .medium))
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.1))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(6)
+                                    }
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            // Chevron
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemBackground))
+                    }
+                    .accessibilityLabel(buildAccessibilityLabel(for: result))
+                    
+                    if result.id != enhancedSearchResults.last?.id {
+                        Divider()
+                            .padding(.leading, 64)
+                    }
+                }
+            }
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
+        }
+        .frame(maxHeight: 320)
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+    }
+    
+    private func updateEnhancedSearchResults(from suggestions: [MKLocalSearchCompletion]) {
+        guard let userLocation = tripManager.userLocation else {
+            enhancedSearchResults = suggestions.map { EnhancedSearchResult(completion: $0) }
+            return
+        }
+        
+        // Cancel any existing search tasks
+        for task in activeSearchTasks.values {
+            task.cancel()
+        }
+        activeSearchTasks.removeAll()
+        
+        // Initialize results with calculating state
+        enhancedSearchResults = suggestions.map {
+            EnhancedSearchResult(completion: $0, isCalculating: true)
+        }
+        
+        // Limit to first 5 suggestions to avoid overwhelming the API
+        let limitedSuggestions = Array(suggestions.prefix(5))
+        
+        // Calculate distance and time for each suggestion with delay
+        for (index, completion) in limitedSuggestions.enumerated() {
+            let resultId = enhancedSearchResults[index].id
+            
+            let task = Task {
+                // Stagger requests to avoid rate limiting (200ms delay between each)
+                try? await Task.sleep(nanoseconds: UInt64(index) * 200_000_000)
+                
+                guard !Task.isCancelled else { return }
+                
+                await calculateRouteForSuggestion(completion: completion, index: index, resultId: resultId, userLocation: userLocation)
+            }
+            
+            activeSearchTasks[resultId] = task
+        }
+    }
+
+    private func calculateRouteForSuggestion(completion: MKLocalSearchCompletion, index: Int, resultId: UUID, userLocation: CLLocationCoordinate2D) async {
+        let searchRequest = MKLocalSearch.Request(completion: completion)
+        let search = MKLocalSearch(request: searchRequest)
+        
+        do {
+            let response = try await search.start()
+            
+            guard !Task.isCancelled,
+                  let mapItem = response.mapItems.first else {
+                await MainActor.run {
+                    if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }) {
+                        enhancedSearchResults[idx].isCalculating = false
+                    }
+                }
+                return
+            }
+            
+            // Calculate route
+            let sourcePlacemark = MKPlacemark(coordinate: userLocation)
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: sourcePlacemark)
+            request.destination = mapItem
+            request.transportType = .automobile
+            
+            let directions = MKDirections(request: request)
+            
+            do {
+                let routeResponse = try await directions.calculate()
+                
+                guard !Task.isCancelled else { return }
+                
+                await MainActor.run {
+                    if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }),
+                       let route = routeResponse.routes.first {
+                        enhancedSearchResults[idx].distance = route.distance / 1609.34
+                        enhancedSearchResults[idx].travelTime = route.expectedTravelTime
+                        enhancedSearchResults[idx].isCalculating = false
+                    }
+                }
+            } catch {
+                // Route calculation failed, just show location without distance/time
+                await MainActor.run {
+                    if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }) {
+                        enhancedSearchResults[idx].isCalculating = false
+                    }
+                }
+            }
+        } catch {
+            // Search failed, just show location without distance/time
+            await MainActor.run {
+                if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }) {
+                    enhancedSearchResults[idx].isCalculating = false
+                }
             }
         }
     }
@@ -849,6 +1078,34 @@ struct ExpressRideView: View {
     }
     
     // MARK: - Helper Functions
+    
+    private func formatTravelTime(_ seconds: TimeInterval) -> String {
+        if seconds < 60 {
+            return "< 1 min"
+        } else if seconds < 3600 {
+            let minutes = Int(seconds / 60)
+            return "\(minutes) min"
+        } else {
+            let hours = Int(seconds / 3600)
+            let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
+            if minutes == 0 {
+                return "\(hours) hr"
+            }
+            return "\(hours) hr \(minutes) min"
+        }
+    }
+
+    private func buildAccessibilityLabel(for result: EnhancedSearchResult) -> String {
+        var label = "\(result.completion.title), \(result.completion.subtitle)"
+        
+        if let distance = result.distance, let time = result.travelTime {
+            let distStr = DistanceFormatterHelper.string(for: distance, useKilometers: useKilometers)
+            let timeStr = formatTravelTime(time)
+            label += ". Distance: \(distStr), Travel time: \(timeStr)"
+        }
+        
+        return label
+    }
     
     private func getMapType() -> MKMapType {
         switch selectedMapStyle {
@@ -905,6 +1162,7 @@ struct ExpressRideView: View {
         if newValue.isEmpty {
             showSuggestions = false
             addressSuggestions = []
+            enhancedSearchResults = []
         } else {
             showSuggestions = true
             let work = DispatchWorkItem {

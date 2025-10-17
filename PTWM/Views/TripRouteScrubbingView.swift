@@ -77,7 +77,7 @@ struct InteractiveTripMapView: View {
     @State private var playbackTimer: Timer?
     @State private var hasInitiallyFitRoute: Bool = false
     @State private var showOverlay: Bool = true
-    @State private var scrubSensitivity: Int = 1 // Points to skip per swipe/slider movement
+    @State private var scrubSensitivity: Int = 1
     @State private var tripEvents: [TripEvent] = []
     @State private var showEventsMenu: Bool = false
     @State private var rotateWithDirection: Bool = false
@@ -95,7 +95,6 @@ struct InteractiveTripMapView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Map View
             ScrubbableMapView(
                 trip: trip,
                 routePoints: routePoints,
@@ -111,9 +110,7 @@ struct InteractiveTripMapView: View {
                     }
             )
             
-            // Overlay Information
             VStack(spacing: 0) {
-                // Top controls
                 HStack {
                     Button(action: { showEventsMenu.toggle() }) {
                         Image(systemName: "star.circle.fill")
@@ -166,13 +163,11 @@ struct InteractiveTripMapView: View {
                 
                 Spacer()
                 
-                // Scrubbing Controls
                 scrubbingControls
                     .background(.ultraThinMaterial)
                     .cornerRadius(16, corners: [.topLeft, .topRight])
             }
             
-            // Events Menu
             if showEventsMenu {
                 eventsMenu
                     .transition(.move(edge: .leading).combined(with: .opacity))
@@ -223,7 +218,30 @@ struct InteractiveTripMapView: View {
         }
     }
     
-    // MARK: - Events Menu
+    private var exportProgressView: some View {
+        ZStack {
+            Color.black.opacity(0.6)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                ProgressView(value: exportProgress, total: 1.0)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .accentColor))
+                    .frame(width: 200)
+                
+                Text("Exporting video...")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                Text("\(Int(exportProgress * 100))%")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            .padding(30)
+            .background(.ultraThinMaterial)
+            .cornerRadius(16)
+        }
+    }
+    
     private var eventsMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -278,36 +296,9 @@ struct InteractiveTripMapView: View {
         .padding(.vertical, 100)
     }
     
-    // MARK: - Export Progress View
-    private var exportProgressView: some View {
-        ZStack {
-            Color.black.opacity(0.6)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                ProgressView(value: exportProgress, total: 1.0)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .accentColor))
-                    .frame(width: 200)
-                
-                Text("Exporting video...")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Text("\(Int(exportProgress * 100))%")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-            .padding(30)
-            .background(.ultraThinMaterial)
-            .cornerRadius(16)
-        }
-    }
-    
-    // MARK: - Point Info Card
     private func pointInfoCard(point: RoutePoint) -> some View {
         VStack(spacing: 12) {
             HStack {
-                // Time
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Time")
                         .font(.caption)
@@ -318,7 +309,6 @@ struct InteractiveTripMapView: View {
                 
                 Spacer()
                 
-                // Speed
                 VStack(alignment: .center, spacing: 4) {
                     Text("Speed")
                         .font(.caption)
@@ -334,7 +324,6 @@ struct InteractiveTripMapView: View {
                 
                 Spacer()
                 
-                // Distance from start
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("From Start")
                         .font(.caption)
@@ -344,7 +333,6 @@ struct InteractiveTripMapView: View {
                 }
             }
             
-            // Progress indicator
             HStack(spacing: 8) {
                 Text("Progress:")
                     .font(.caption)
@@ -383,10 +371,8 @@ struct InteractiveTripMapView: View {
         .padding(.horizontal)
     }
     
-    // MARK: - Scrubbing Controls
     private var scrubbingControls: some View {
         VStack(spacing: 16) {
-            // Playback controls
             HStack(spacing: 24) {
                 Button(action: skipToStart) {
                     Image(systemName: "backward.end.fill")
@@ -421,7 +407,6 @@ struct InteractiveTripMapView: View {
             }
             .padding(.horizontal)
             
-            // Scrubber slider
             if !routePoints.isEmpty {
                 VStack(spacing: 8) {
                     Slider(
@@ -455,9 +440,7 @@ struct InteractiveTripMapView: View {
                 .padding(.horizontal)
             }
             
-            // Playback speed and sensitivity controls
             HStack(spacing: 20) {
-                // Playback speed
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Speed:")
                         .font(.caption)
@@ -483,7 +466,6 @@ struct InteractiveTripMapView: View {
                 
                 Spacer()
                 
-                // Scrub sensitivity
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Detail:")
                         .font(.caption)
@@ -512,7 +494,6 @@ struct InteractiveTripMapView: View {
         .padding(.vertical)
     }
     
-    // MARK: - Gesture Handling
     private func handleSwipeGesture(translation: CGFloat) {
         guard !routePoints.isEmpty else { return }
         
@@ -528,7 +509,6 @@ struct InteractiveTripMapView: View {
         }
     }
     
-    // MARK: - Haptic Feedback
     private func triggerHapticFeedback() {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
@@ -539,7 +519,6 @@ struct InteractiveTripMapView: View {
         generator.notificationOccurred(.success)
     }
     
-    // MARK: - Playback Controls
     private func togglePlayback() {
         if isPlaying {
             stopPlayback()
@@ -568,7 +547,6 @@ struct InteractiveTripMapView: View {
                 let nextIndex = min(currentIndex + scrubSensitivity, routePoints.count - 1)
                 selectedPointIndex = nextIndex
                 
-                // Auto-pause on significant events
                 if shouldPauseAtIndex(nextIndex) {
                     stopPlayback()
                     triggerMilestoneHaptic()
@@ -618,19 +596,16 @@ struct InteractiveTripMapView: View {
         triggerMilestoneHaptic()
     }
     
-    // MARK: - Trip Analysis
     private func analyzeTrip() {
         guard !routePoints.isEmpty else { return }
         
         var events: [TripEvent] = []
         
-        // Find fastest speed
         if let fastestIndex = routePoints.indices.max(by: { routePoints[$0].speed < routePoints[$1].speed }) {
             let fastestPoint = routePoints[fastestIndex]
             events.append(.fastestSpeed(index: fastestIndex, speed: fastestPoint.speed))
         }
         
-        // Find longest stop (speed below 2 mph for extended period)
         var currentStopStart: Int?
         var longestStopDuration: TimeInterval = 0
         var longestStopIndex: Int?
@@ -656,7 +631,6 @@ struct InteractiveTripMapView: View {
             events.append(.longestStop(index: stopIndex, duration: longestStopDuration))
         }
         
-        // Find significant speed changes (>20 mph change)
         for i in 1..<routePoints.count {
             let speedChange = abs(routePoints[i].speedMPH - routePoints[i-1].speedMPH)
             if speedChange > 20 {
@@ -676,7 +650,6 @@ struct InteractiveTripMapView: View {
         return tripEvents.contains { $0.index == index }
     }
     
-    // MARK: - Export Functions
     private func shareCurrentMoment() {
         guard let point = selectedPoint else { return }
         
@@ -699,7 +672,6 @@ struct InteractiveTripMapView: View {
         exportProgress = 0.0
         triggerMilestoneHaptic()
         
-        // Create video in background
         Task {
             let videoURL = await createTripVideo()
             
@@ -717,45 +689,42 @@ struct InteractiveTripMapView: View {
         let fileName = "trip_\(trip.startTime.formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-"))_\(UUID().uuidString.prefix(8)).mp4"
         let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         
-        // Remove existing file if it exists
         try? FileManager.default.removeItem(at: outputURL)
         
-        // Video settings - optimized for speed
         let videoSize = CGSize(width: 1080, height: 1920)
         let fps: Int32 = 30
         
-        // Adaptive duration based on route length
-        // Shorter routes get more time per point, longer routes compress more
-        let pointsCount = routePoints.count
-        let baseDuration: Double = pointsCount < 50 ? 15.0 : pointsCount < 100 ? 20.0 : 30.0
-        let duration = baseDuration
+        // Create one frame per route point for complete accuracy
+        let framesPerPoint = 2 // Show each coordinate for 2 frames (smoother motion)
+        let totalFrames = routePoints.count * framesPerPoint
         
-        // Reduce total frames for performance
-        let totalFrames = Int(duration * Double(fps))
+        // Calculate video duration based on total frames
+        let videoDuration = Double(totalFrames) / Double(fps)
         
-        // Calculate how many route points to skip per frame
-        let pointsPerFrame = max(1, routePoints.count / totalFrames)
+        print("Creating video: \(routePoints.count) points, \(totalFrames) frames, \(String(format: "%.1f", videoDuration)) seconds")
         
-        // Pre-generate map snapshots (more frequent updates)
-        let snapshotInterval = max(1, totalFrames / 60) // 60 snapshots for smooth updates (every 0.5 seconds)
+        // Generate map snapshots for EVERY route point for perfectly smooth animation
         var cachedSnapshots: [Int: UIImage] = [:]
         
         await MainActor.run {
             self.exportProgress = 0.05
         }
         
-        // Generate snapshots in batches to avoid overwhelming the system
-        let batchSize = 10
-        let snapshotFrames = stride(from: 0, to: totalFrames, by: snapshotInterval).map { $0 }
+        // Process in batches to avoid memory issues
+        let batchSize = 20
+        let uniquePoints = Set(stride(from: 0, to: totalFrames, by: framesPerPoint).map { $0 })
+        let pointFrames = Array(uniquePoints).sorted()
         
-        for batchStart in stride(from: 0, to: snapshotFrames.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, snapshotFrames.count)
-            let batch = Array(snapshotFrames[batchStart..<batchEnd])
+        print("Generating \(pointFrames.count) unique map snapshots...")
+        
+        for batchStart in stride(from: 0, to: pointFrames.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, pointFrames.count)
+            let batch = Array(pointFrames[batchStart..<batchEnd])
             
             await withTaskGroup(of: (Int, UIImage?).self) { group in
                 for frameIndex in batch {
                     group.addTask {
-                        let pointIndex = min(frameIndex * pointsPerFrame, self.routePoints.count - 1)
+                        let pointIndex = frameIndex / framesPerPoint
                         let snapshot = await self.generateMapSnapshot(for: pointIndex, size: videoSize)
                         return (frameIndex, snapshot)
                     }
@@ -768,16 +737,24 @@ struct InteractiveTripMapView: View {
                 }
             }
             
-            // Update progress during snapshot generation
-            let progress = 0.05 + (0.15 * Double(batchEnd) / Double(snapshotFrames.count))
+            let progress = 0.05 + (0.45 * Double(batchEnd) / Double(pointFrames.count))
             await MainActor.run {
                 self.exportProgress = progress
+            }
+            
+            // Optional: Small delay to prevent overwhelming the system
+            if batchStart % 100 == 0 && batchStart > 0 {
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
             }
         }
         
         await MainActor.run {
-            self.exportProgress = 0.2
+            self.exportProgress = 0.5
         }
+        
+        print("Snapshots generated, creating video file...")
+        
+        guard let videoWriter = try? AVAssetWriter(outputURL: outputURL, fileType: .mp4) else {
             return nil
         }
         
@@ -786,9 +763,9 @@ struct InteractiveTripMapView: View {
             AVVideoWidthKey: videoSize.width,
             AVVideoHeightKey: videoSize.height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 4000000, // Reduced bitrate
+                AVVideoAverageBitRateKey: 6000000, // Higher bitrate for better quality
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoMaxKeyFrameIntervalKey: 30
+                AVVideoMaxKeyFrameIntervalKey: fps
             ]
         ]
         
@@ -814,28 +791,13 @@ struct InteractiveTripMapView: View {
             videoWriterInput.requestMediaDataWhenReady(on: DispatchQueue(label: "videoWriterQueue")) {
                 while videoWriterInput.isReadyForMoreMediaData && frameCount < totalFrames {
                     let presentationTime = CMTime(value: Int64(frameCount), timescale: fps)
-                    let pointIndex = min(frameCount * pointsPerFrame, self.routePoints.count - 1)
                     
-                    // Find nearest cached snapshot (look for closest one)
-                    var nearestSnapshotFrame = (frameCount / snapshotInterval) * snapshotInterval
-                    var cachedSnapshot = cachedSnapshots[nearestSnapshotFrame]
+                    // Map frame to exact route point
+                    let pointIndex = frameCount / framesPerPoint
                     
-                    // If no cached snapshot at this exact position, find the nearest one
-                    if cachedSnapshot == nil {
-                        var searchRadius = snapshotInterval
-                        while cachedSnapshot == nil && searchRadius < totalFrames {
-                            // Check before and after
-                            if let before = cachedSnapshots[max(0, nearestSnapshotFrame - searchRadius)] {
-                                cachedSnapshot = before
-                                break
-                            }
-                            if let after = cachedSnapshots[min(totalFrames - 1, nearestSnapshotFrame + searchRadius)] {
-                                cachedSnapshot = after
-                                break
-                            }
-                            searchRadius += snapshotInterval
-                        }
-                    }
+                    // Find the snapshot for this point (should exist for every point now)
+                    let snapshotFrameIndex = (frameCount / framesPerPoint) * framesPerPoint
+                    let cachedSnapshot = cachedSnapshots[snapshotFrameIndex]
                     
                     if let pixelBuffer = self.createVideoFrameFast(
                         size: videoSize,
@@ -848,9 +810,9 @@ struct InteractiveTripMapView: View {
                     
                     frameCount += 1
                     
-                    // Update progress less frequently
-                    if frameCount % 30 == 0 {
-                        let progress = 0.2 + (0.8 * Double(frameCount) / Double(totalFrames))
+                    // Update progress more frequently
+                    if frameCount % 20 == 0 {
+                        let progress = 0.5 + (0.5 * Double(frameCount) / Double(totalFrames))
                         Task { @MainActor in
                             self.exportProgress = progress
                         }
@@ -860,6 +822,7 @@ struct InteractiveTripMapView: View {
                 if frameCount >= totalFrames {
                     videoWriterInput.markAsFinished()
                     videoWriter.finishWriting {
+                        print("Video export complete!")
                         continuation.resume()
                     }
                 }
@@ -867,6 +830,7 @@ struct InteractiveTripMapView: View {
         }
         
         guard videoWriter.status == .completed else {
+            print("Video export failed with status: \(videoWriter.status.rawValue)")
             return nil
         }
         
@@ -878,7 +842,7 @@ struct InteractiveTripMapView: View {
         let mapRect = CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7)
         
         let mapSnapshotOptions = MKMapSnapshotter.Options()
-        let regionRadius: CLLocationDistance = 1500 // Slightly larger view
+        let regionRadius: CLLocationDistance = 1500
         
         mapSnapshotOptions.region = MKCoordinateRegion(
             center: point.coordinate,
@@ -906,12 +870,10 @@ struct InteractiveTripMapView: View {
                 
                 snapshot.image.draw(at: .zero)
                 
-                // Draw entire route with current position highlighted
                 context.setLineWidth(8)
                 context.setLineCap(.round)
                 context.setLineJoin(.round)
                 
-                // Draw full route in gray first
                 context.setStrokeColor(UIColor.systemGray.withAlphaComponent(0.4).cgColor)
                 if let firstPoint = self.routePoints.first {
                     let startPt = snapshot.point(for: firstPoint.coordinate)
@@ -924,7 +886,6 @@ struct InteractiveTripMapView: View {
                     context.strokePath()
                 }
                 
-                // Draw traveled portion in blue (thicker)
                 if pointIndex > 0 {
                     context.setStrokeColor(UIColor.systemBlue.cgColor)
                     context.setLineWidth(10)
@@ -939,23 +900,18 @@ struct InteractiveTripMapView: View {
                     context.strokePath()
                 }
                 
-                // Current position marker
                 let currentPoint = snapshot.point(for: point.coordinate)
                 
-                // Shadow
                 context.setShadow(offset: CGSize(width: 0, height: 2), blur: 4, color: UIColor.black.withAlphaComponent(0.3).cgColor)
                 
-                // White outer ring
                 context.setFillColor(UIColor.white.cgColor)
                 context.fillEllipse(in: CGRect(x: currentPoint.x - 18, y: currentPoint.y - 18, width: 36, height: 36))
                 
                 context.setShadow(offset: .zero, blur: 0, color: nil)
                 
-                // Blue middle
                 context.setFillColor(UIColor.systemBlue.cgColor)
                 context.fillEllipse(in: CGRect(x: currentPoint.x - 14, y: currentPoint.y - 14, width: 28, height: 28))
                 
-                // White center
                 context.setFillColor(UIColor.white.cgColor)
                 context.fillEllipse(in: CGRect(x: currentPoint.x - 6, y: currentPoint.y - 6, width: 12, height: 12))
                 
@@ -1002,38 +958,34 @@ struct InteractiveTripMapView: View {
             return nil
         }
         
-        // Draw background
-        context.setFillColor(UIColor.systemBackground.cgColor)
+        // Fill background
+        context.setFillColor(UIColor.black.cgColor)
         context.fill(CGRect(origin: .zero, size: size))
         
         let mapRect = CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7)
         
-        // Draw cached map snapshot or generate simple map
+        // Draw map
         if let snapshot = cachedMapSnapshot, let cgImage = snapshot.cgImage {
             context.draw(cgImage, in: mapRect)
         } else {
-            // Draw simple map with route as fallback
             drawSimpleRouteMap(context: context, point: point, pointIndex: pointIndex, mapRect: mapRect)
         }
         
-        // Draw overlays (this is fast)
+        // CRITICAL: Draw overlays on every frame
         drawOverlays(context: context, point: point, pointIndex: pointIndex, totalPoints: totalPoints, size: size)
         
         return buffer
     }
     
     private func drawSimpleRouteMap(context: CGContext, point: RoutePoint, pointIndex: Int, mapRect: CGRect) {
-        // Background
         context.setFillColor(UIColor.systemGray6.cgColor)
         context.fill(mapRect)
         
-        // Draw route
         let padding: CGFloat = 100
         let drawableRect = mapRect.insetBy(dx: padding, dy: padding)
         
         guard !routePoints.isEmpty else { return }
         
-        // Calculate bounds
         let minLat = routePoints.map { $0.coordinate.latitude }.min() ?? 0
         let maxLat = routePoints.map { $0.coordinate.latitude }.max() ?? 0
         let minLon = routePoints.map { $0.coordinate.longitude }.min() ?? 0
@@ -1042,7 +994,6 @@ struct InteractiveTripMapView: View {
         let latRange = max(maxLat - minLat, 0.001)
         let lonRange = max(maxLon - minLon, 0.001)
         
-        // Helper function to convert coordinate to point
         func pointForCoordinate(_ coord: CLLocationCoordinate2D) -> CGPoint {
             let x = drawableRect.origin.x + ((coord.longitude - minLon) / lonRange) * drawableRect.width
             let y = drawableRect.origin.y + drawableRect.height - ((coord.latitude - minLat) / latRange) * drawableRect.height
@@ -1083,197 +1034,102 @@ struct InteractiveTripMapView: View {
             context.strokePath()
         }
         
+        // Draw start point marker (green)
+        let startPoint = pointForCoordinate(routePoints[0].coordinate)
+        context.setFillColor(UIColor.systemGreen.cgColor)
+        context.fillEllipse(in: CGRect(x: startPoint.x - 15, y: startPoint.y - 15, width: 30, height: 30))
+        context.setFillColor(UIColor.white.cgColor)
+        context.fillEllipse(in: CGRect(x: startPoint.x - 8, y: startPoint.y - 8, width: 16, height: 16))
+        
+        // Draw end point marker (red)
+        let endPoint = pointForCoordinate(routePoints[routePoints.count - 1].coordinate)
+        context.setFillColor(UIColor.systemRed.cgColor)
+        context.fillEllipse(in: CGRect(x: endPoint.x - 15, y: endPoint.y - 15, width: 30, height: 30))
+        context.setFillColor(UIColor.white.cgColor)
+        context.fillEllipse(in: CGRect(x: endPoint.x - 8, y: endPoint.y - 8, width: 16, height: 16))
+        
         // Draw current position marker
         let currentPoint = pointForCoordinate(point.coordinate)
         
-        // White outer ring
         context.setFillColor(UIColor.white.cgColor)
         context.fillEllipse(in: CGRect(x: currentPoint.x - 20, y: currentPoint.y - 20, width: 40, height: 40))
         
-        // Blue middle
         context.setFillColor(UIColor.systemBlue.cgColor)
         context.fillEllipse(in: CGRect(x: currentPoint.x - 14, y: currentPoint.y - 14, width: 28, height: 28))
         
-        // White center
         context.setFillColor(UIColor.white.cgColor)
         context.fillEllipse(in: CGRect(x: currentPoint.x - 6, y: currentPoint.y - 6, width: 12, height: 12))
-    }
-    
-    private func createVideoFrame(size: CGSize, pointIndex: Int, totalPoints: Int) -> CVPixelBuffer? {
-        let point = routePoints[pointIndex]
-        
-        var pixelBuffer: CVPixelBuffer?
-        let options: [String: Any] = [
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
-        ]
-        
-        let status = CVPixelBufferCreate(
-            kCFAllocatorDefault,
-            Int(size.width),
-            Int(size.height),
-            kCVPixelFormatType_32ARGB,
-            options as CFDictionary,
-            &pixelBuffer
-        )
-        
-        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            return nil
-        }
-        
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        
-        guard let context = CGContext(
-            data: CVPixelBufferGetBaseAddress(buffer),
-            width: Int(size.width),
-            height: Int(size.height),
-            bitsPerComponent: 8,
-            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
-        ) else {
-            return nil
-        }
-        
-        // Draw background
-        context.setFillColor(UIColor.systemBackground.cgColor)
-        context.fill(CGRect(origin: .zero, size: size))
-        
-        // Draw map snapshot
-        drawMapSnapshot(context: context, point: point, size: size)
-        
-        // Draw overlays
-        drawOverlays(context: context, point: point, pointIndex: pointIndex, totalPoints: totalPoints, size: size)
-        
-        return buffer
-    }
-    
-    private func drawMapSnapshot(context: CGContext, point: RoutePoint, size: CGSize) {
-        // This method is no longer used - keeping for compatibility
-        drawSimpleMapFallback(context: context, point: point, size: size, mapRect: CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7))
-    }
-    
-    private func drawSimpleMapFallback(context: CGContext, point: RoutePoint, size: CGSize, mapRect: CGRect) {
-        // Background
-        context.setFillColor(UIColor.systemGray6.cgColor)
-        context.fill(mapRect)
-        
-        // Draw route path
-        let padding: CGFloat = 100
-        let drawableRect = mapRect.insetBy(dx: padding, dy: padding)
-        
-        // Calculate bounds
-        let minLat = routePoints.map { $0.coordinate.latitude }.min() ?? 0
-        let maxLat = routePoints.map { $0.coordinate.latitude }.max() ?? 0
-        let minLon = routePoints.map { $0.coordinate.longitude }.min() ?? 0
-        let maxLon = routePoints.map { $0.coordinate.longitude }.max() ?? 0
-        
-        let latRange = maxLat - minLat
-        let lonRange = maxLon - minLon
-        
-        // Draw traveled route (blue)
-        context.setStrokeColor(UIColor.systemBlue.cgColor)
-        context.setLineWidth(8)
-        context.setLineCap(.round)
-        
-        let currentIndex = routePoints.firstIndex(where: { $0.id == point.id }) ?? 0
-        
-        if currentIndex > 0 {
-            if let firstPoint = routePoints.first {
-                let startX = drawableRect.origin.x + ((firstPoint.coordinate.longitude - minLon) / lonRange) * drawableRect.width
-                let startY = drawableRect.origin.y + drawableRect.height - ((firstPoint.coordinate.latitude - minLat) / latRange) * drawableRect.height
-                context.move(to: CGPoint(x: startX, y: startY))
-            }
-            
-            for i in 1...currentIndex {
-                let routePoint = routePoints[i]
-                let x = drawableRect.origin.x + ((routePoint.coordinate.longitude - minLon) / lonRange) * drawableRect.width
-                let y = drawableRect.origin.y + drawableRect.height - ((routePoint.coordinate.latitude - minLat) / latRange) * drawableRect.height
-                context.addLine(to: CGPoint(x: x, y: y))
-            }
-            context.strokePath()
-        }
-        
-        // Draw remaining route (gray)
-        context.setStrokeColor(UIColor.systemGray3.cgColor)
-        context.setLineWidth(6)
-        
-        if currentIndex < routePoints.count - 1 {
-            let currentPoint = routePoints[currentIndex]
-            let startX = drawableRect.origin.x + ((currentPoint.coordinate.longitude - minLon) / lonRange) * drawableRect.width
-            let startY = drawableRect.origin.y + drawableRect.height - ((currentPoint.coordinate.latitude - minLat) / latRange) * drawableRect.height
-            context.move(to: CGPoint(x: startX, y: startY))
-            
-            for i in (currentIndex + 1)..<routePoints.count {
-                let routePoint = routePoints[i]
-                let x = drawableRect.origin.x + ((routePoint.coordinate.longitude - minLon) / lonRange) * drawableRect.width
-                let y = drawableRect.origin.y + drawableRect.height - ((routePoint.coordinate.latitude - minLat) / latRange) * drawableRect.height
-                context.addLine(to: CGPoint(x: x, y: y))
-            }
-            context.strokePath()
-        }
-        
-        // Draw current position marker
-        let currentX = drawableRect.origin.x + ((point.coordinate.longitude - minLon) / lonRange) * drawableRect.width
-        let currentY = drawableRect.origin.y + drawableRect.height - ((point.coordinate.latitude - minLat) / latRange) * drawableRect.height
-        
-        context.setFillColor(UIColor.systemBlue.cgColor)
-        context.fillEllipse(in: CGRect(x: currentX - 20, y: currentY - 20, width: 40, height: 40))
-        
-        context.setFillColor(UIColor.white.cgColor)
-        context.fillEllipse(in: CGRect(x: currentX - 10, y: currentY - 10, width: 20, height: 20))
     }
     
     private func drawOverlays(context: CGContext, point: RoutePoint, pointIndex: Int, totalPoints: Int, size: CGSize) {
         let overlayY = size.height * 0.7
         let overlayHeight = size.height * 0.3
         
-        // Semi-transparent background for info
-        context.setFillColor(UIColor.black.withAlphaComponent(0.7).cgColor)
+        // Draw semi-transparent background
+        context.setFillColor(UIColor.black.withAlphaComponent(0.8).cgColor)
         context.fill(CGRect(x: 0, y: overlayY, width: size.width, height: overlayHeight))
         
-        // Prepare text attributes
-        let titleAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 40, weight: .bold),
-            .foregroundColor: UIColor.white
-        ]
-        
+        // Use NSString drawing which works in normal coordinate system
         let labelAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 28, weight: .regular),
+            .font: UIFont.systemFont(ofSize: 32, weight: .medium),
             .foregroundColor: UIColor.lightGray
         ]
         
         let valueAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 48, weight: .heavy),
+            .font: UIFont.systemFont(ofSize: 56, weight: .heavy),
             .foregroundColor: UIColor.white
         ]
         
-        // Speed
-        let speedLabel = "Speed" as NSString
+        let smallValueAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 44, weight: .bold),
+            .foregroundColor: UIColor.white
+        ]
+        
+        // Create an image context for text rendering
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: size.width, height: overlayHeight), false, 1.0)
+        guard let textContext = UIGraphicsGetCurrentContext() else { return }
+        
+        // Speed (left side)
+        let speedLabel = "SPEED" as NSString
         let speedValue = formatSpeed(point.speed) as NSString
         
-        speedLabel.draw(at: CGPoint(x: 80, y: overlayY + 60), withAttributes: labelAttributes)
-        speedValue.draw(at: CGPoint(x: 80, y: overlayY + 100), withAttributes: valueAttributes)
+        speedLabel.draw(at: CGPoint(x: 80, y: 50), withAttributes: labelAttributes)
+        speedValue.draw(at: CGPoint(x: 80, y: 90), withAttributes: valueAttributes)
         
-        // Time
-        let timeLabel = "Time" as NSString
+        // Time (center)
+        let timeLabel = "TIME" as NSString
         let timeValue = point.timestamp.formatted(date: .omitted, time: .shortened) as NSString
         
-        timeLabel.draw(at: CGPoint(x: 80, y: overlayY + 200), withAttributes: labelAttributes)
-        timeValue.draw(at: CGPoint(x: 80, y: overlayY + 240), withAttributes: valueAttributes)
+        let centerX = size.width / 2
+        let timeLabelSize = timeLabel.size(withAttributes: labelAttributes)
+        let timeValueSize = timeValue.size(withAttributes: smallValueAttributes)
         
-        // Distance
-        let distanceLabel = "Distance" as NSString
+        timeLabel.draw(at: CGPoint(x: centerX - timeLabelSize.width / 2, y: 50), withAttributes: labelAttributes)
+        timeValue.draw(at: CGPoint(x: centerX - timeValueSize.width / 2, y: 90), withAttributes: smallValueAttributes)
+        
+        // Distance (right side)
+        let distanceLabel = "DISTANCE" as NSString
         let distanceValue = formatDistance(point.distanceFromStart) as NSString
         
-        distanceLabel.draw(at: CGPoint(x: size.width - 400, y: overlayY + 60), withAttributes: labelAttributes)
-        distanceValue.draw(at: CGPoint(x: size.width - 400, y: overlayY + 100), withAttributes: valueAttributes)
+        let distanceLabelSize = distanceLabel.size(withAttributes: labelAttributes)
+        let distanceValueSize = distanceValue.size(withAttributes: smallValueAttributes)
+        
+        distanceLabel.draw(at: CGPoint(x: size.width - 80 - distanceLabelSize.width, y: 50), withAttributes: labelAttributes)
+        distanceValue.draw(at: CGPoint(x: size.width - 80 - distanceValueSize.width, y: 90), withAttributes: smallValueAttributes)
+        
+        // Get the rendered text as an image
+        let textImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        // Draw the text image onto the main context
+        if let textImage = textImage, let cgImage = textImage.cgImage {
+            context.draw(cgImage, in: CGRect(x: 0, y: overlayY, width: size.width, height: overlayHeight))
+        }
         
         // Progress bar
-        let progressBarY = overlayY + 350
+        let progressBarY = overlayY + 240
         let progressBarWidth = size.width - 160
-        let progressBarHeight: CGFloat = 12
+        let progressBarHeight: CGFloat = 16
         
         // Background
         context.setFillColor(UIColor.darkGray.cgColor)
@@ -1282,7 +1138,7 @@ struct InteractiveTripMapView: View {
         context.addPath(progressBarPath.cgPath)
         context.fillPath()
         
-        // Progress
+        // Progress fill
         let progress = CGFloat(pointIndex) / CGFloat(max(totalPoints - 1, 1))
         context.setFillColor(UIColor.systemBlue.cgColor)
         let filledRect = CGRect(x: 80, y: progressBarY, width: progressBarWidth * progress, height: progressBarHeight)
@@ -1290,13 +1146,27 @@ struct InteractiveTripMapView: View {
         context.addPath(filledPath.cgPath)
         context.fillPath()
         
-        // Progress percentage
+        // Progress percentage text
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: 200, height: 60), false, 1.0)
+        
         let progressText = "\(Int(progress * 100))%" as NSString
         let progressAttributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 32, weight: .semibold),
+            .font: UIFont.systemFont(ofSize: 36, weight: .bold),
             .foregroundColor: UIColor.white
         ]
-        progressText.draw(at: CGPoint(x: size.width - 150, y: progressBarY - 10), withAttributes: progressAttributes)
+        let progressTextSize = progressText.size(withAttributes: progressAttributes)
+        progressText.draw(at: CGPoint(x: 0, y: 0), withAttributes: progressAttributes)
+        
+        let progressTextImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        if let progressTextImage = progressTextImage, let cgImage = progressTextImage.cgImage {
+            context.draw(cgImage, in: CGRect(x: size.width / 2 - progressTextSize.width / 2, y: progressBarY + 30, width: progressTextSize.width, height: 40))
+        }
+    }
+    
+    private func drawText(context: CGContext, text: String, x: CGFloat, y: CGFloat, fontSize: CGFloat, color: UIColor) {
+        // This function is no longer needed but kept for compatibility
     }
     
     private func saveVideoToFiles(url: URL) {
@@ -1321,7 +1191,6 @@ struct InteractiveTripMapView: View {
         }
     }
     
-    // MARK: - Route Point Generation
     private func generateRoutePoints() {
         guard !trip.routeCoordinates.isEmpty else { return }
         
@@ -1366,7 +1235,6 @@ struct InteractiveTripMapView: View {
         }
     }
     
-    // MARK: - Helper Functions
     private func formatSpeed(_ speedMS: Double) -> String {
         if useKilometers {
             return String(format: "%.0f km/h", speedMS * 3.6)
@@ -1416,10 +1284,8 @@ struct ScrubbableMapView: UIViewRepresentable {
         let coordinates = trip.routeCoordinates.map { $0.clCoordinate }
         guard !coordinates.isEmpty else { return }
         
-        // Add speed-colored route segments
         addColoredRouteSegments(to: mapView, coordinates: coordinates)
         
-        // Add traveled portion
         if let selectedIndex = selectedPointIndex, selectedIndex > 0 {
             let traveledCoords = Array(coordinates[0...selectedIndex])
             let traveledPolyline = MKPolyline(coordinates: traveledCoords, count: traveledCoords.count)
@@ -1427,7 +1293,6 @@ struct ScrubbableMapView: UIViewRepresentable {
             mapView.addOverlay(traveledPolyline, level: .aboveLabels)
         }
         
-        // Add current position marker
         if let selectedIndex = selectedPointIndex,
            selectedIndex < routePoints.count {
             let point = routePoints[selectedIndex]
@@ -1436,7 +1301,6 @@ struct ScrubbableMapView: UIViewRepresentable {
             annotation.title = "Current Position"
             mapView.addAnnotation(annotation)
             
-            // Calculate heading for rotation
             var heading: CLLocationDirection = 0
             if rotateWithDirection && selectedIndex < routePoints.count - 1 {
                 let currentCoord = point.coordinate
@@ -1501,16 +1365,13 @@ struct ScrubbableMapView: UIViewRepresentable {
             
             let renderer = MKPolylineRenderer(polyline: polyline)
             
-            // Check if this is the traveled portion
             if overlay === traveledPolyline {
                 renderer.strokeColor = .systemBlue
                 renderer.lineWidth = 6
             } else if let coloredPolyline = overlay as? ColoredPolyline {
-                // Speed-colored segment
                 renderer.strokeColor = coloredPolyline.color
                 renderer.lineWidth = 4
             } else {
-                // Fallback
                 renderer.strokeColor = .systemGray3
                 renderer.lineWidth = 4
             }

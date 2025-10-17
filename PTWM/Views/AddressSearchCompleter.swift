@@ -1,6 +1,7 @@
 import Foundation
 import MapKit
 import Combine
+import CoreLocation
 
 class AddressSearchCompleter: NSObject, ObservableObject {
     @Published var suggestions: [MKLocalSearchCompletion] = []
@@ -10,14 +11,24 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     private let completer = MKLocalSearchCompleter()
     private var cancellables = Set<AnyCancellable>()
     private let searchSubject = PassthroughSubject<String, Never>()
+    private let locationManager = CLLocationManager()
     
     var debounceInterval: Int = 300
     var minimumQueryLength: Int = 2
+    var userLocation: CLLocation?
     
     override init() {
         super.init()
+        setupLocationManager()
         setupCompleter()
         setupDebouncing()
+    }
+    
+    private func setupLocationManager() {
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
     }
     
     private func setupCompleter() {
@@ -62,6 +73,16 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     }
     
     private func performSearch(query: String) {
+        // Set search region based on user location
+        if let location = userLocation {
+            let region = MKCoordinateRegion(
+                center: location.coordinate,
+                latitudinalMeters: 50000,
+                longitudinalMeters: 50000
+            )
+            completer.region = region
+        }
+        
         completer.queryFragment = query
     }
     
@@ -107,6 +128,73 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     func cancelSearch() {
         completer.cancel()
         isSearching = false
+    }
+    
+    // Sort suggestions by distance from user location
+    private func sortSuggestionsByDistance(_ completions: [MKLocalSearchCompletion]) async -> [MKLocalSearchCompletion] {
+        guard let userLocation = userLocation else {
+            return completions
+        }
+        
+        var completionsWithDistance: [(completion: MKLocalSearchCompletion, distance: CLLocationDistance?)] = []
+        
+        for completion in completions {
+            do {
+                let mapItem = try await search(for: completion)
+                if let itemLocation = mapItem.placemark.location {
+                    let distance = userLocation.distance(from: itemLocation)
+                    completionsWithDistance.append((completion, distance))
+                } else {
+                    completionsWithDistance.append((completion, nil))
+                }
+            } catch {
+                completionsWithDistance.append((completion, nil))
+            }
+        }
+        
+        // Sort: items with distance first (ascending), then items without distance
+        return completionsWithDistance.sorted { item1, item2 in
+            switch (item1.distance, item2.distance) {
+            case (.some(let d1), .some(let d2)):
+                return d1 < d2
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            case (.none, .none):
+                return false
+            }
+        }.map { $0.completion }
+    }
+}
+
+// MARK: - CLLocationManagerDelegate
+extension AddressSearchCompleter: CLLocationManagerDelegate {
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        userLocation = location
+        
+        // Stop updating location after getting initial location to save battery
+        if userLocation != nil {
+            locationManager.stopUpdatingLocation()
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location error: \(error.localizedDescription)")
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.startUpdatingLocation()
+        case .denied, .restricted:
+            print("Location access denied")
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+        @unknown default:
+            break
+        }
     }
 }
 
@@ -160,10 +248,14 @@ extension AddressSearchCompleter {
 // MARK: - MKLocalSearchCompleterDelegate
 extension AddressSearchCompleter: MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        DispatchQueue.main.async {
-            self.suggestions = completer.results
-            self.isSearching = false
-            self.errorMessage = nil
+        Task {
+            let sortedResults = await sortSuggestionsByDistance(completer.results)
+            
+            await MainActor.run {
+                self.suggestions = sortedResults
+                self.isSearching = false
+                self.errorMessage = nil
+            }
         }
     }
     

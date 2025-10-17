@@ -11,8 +11,7 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let searchSubject = PassthroughSubject<String, Never>()
     
-    // Configurable properties
-    var debounceInterval: Int = 300 // milliseconds
+    var debounceInterval: Int = 300
     var minimumQueryLength: Int = 2
     
     override init() {
@@ -25,7 +24,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
         
-        // Set a reasonable point of interest filter for better results
         if #available(iOS 13.0, *) {
             completer.pointOfInterestFilter = MKPointOfInterestFilter.includingAll
         }
@@ -42,12 +40,10 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     }
     
     func updateQuery(_ query: String) {
-        // Clear previous error when starting new search
         errorMessage = nil
         
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Handle empty query
         if trimmedQuery.isEmpty {
             suggestions = []
             isSearching = false
@@ -55,7 +51,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
             return
         }
         
-        // Only search if query meets minimum length requirement
         guard trimmedQuery.count >= minimumQueryLength else {
             suggestions = []
             isSearching = false
@@ -72,21 +67,18 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     
     // MARK: - Public Methods
     
-    /// Clear all suggestions and reset state
     func clearSuggestions() {
         suggestions = []
         isSearching = false
         errorMessage = nil
         completer.queryFragment = ""
-        searchSubject.send("") // Clear any pending searches
+        searchSubject.send("")
     }
     
-    /// Configure search region for more relevant results
     func setSearchRegion(_ region: MKCoordinateRegion) {
         completer.region = region
     }
     
-    /// Configure search region from user's location
     func setSearchRegion(center: CLLocationCoordinate2D, radiusInMeters: Double = 50000) {
         let region = MKCoordinateRegion(
             center: center,
@@ -96,12 +88,10 @@ class AddressSearchCompleter: NSObject, ObservableObject {
         completer.region = region
     }
     
-    /// Filter results by type
     func setResultTypes(_ types: MKLocalSearchCompleter.ResultType) {
         completer.resultTypes = types
     }
     
-    /// Perform a full search for a completion to get detailed information
     func search(for completion: MKLocalSearchCompletion) async throws -> MKMapItem {
         let searchRequest = MKLocalSearch.Request(completion: completion)
         let search = MKLocalSearch(request: searchRequest)
@@ -114,7 +104,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
         return mapItem
     }
     
-    /// Cancel all active searches
     func cancelSearch() {
         completer.cancel()
         isSearching = false
@@ -123,7 +112,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
 
 // MARK: - Convenience Methods
 extension AddressSearchCompleter {
-    /// Get the full address string for a completion
     func fullAddress(for completion: MKLocalSearchCompletion) -> String {
         if completion.subtitle.isEmpty {
             return completion.title
@@ -132,7 +120,6 @@ extension AddressSearchCompleter {
         }
     }
     
-    /// Get attributed text with highlighted matching text
     func attributedTitle(for completion: MKLocalSearchCompletion) -> NSAttributedString {
         return completion.titleHighlightRanges.isEmpty ?
             NSAttributedString(string: completion.title) :
@@ -161,12 +148,10 @@ extension AddressSearchCompleter {
         return attributedString
     }
     
-    /// Check if suggestions list is empty but not because of error
     var hasNoResults: Bool {
         return suggestions.isEmpty && !isSearching && errorMessage == nil
     }
     
-    /// Check if there are valid suggestions to display
     var hasSuggestions: Bool {
         return !suggestions.isEmpty
     }
@@ -187,7 +172,6 @@ extension AddressSearchCompleter: MKLocalSearchCompleterDelegate {
             self.suggestions = []
             self.isSearching = false
             
-            // Provide user-friendly error messages
             if let mkError = error as? MKError {
                 switch mkError.code {
                 case .unknown:

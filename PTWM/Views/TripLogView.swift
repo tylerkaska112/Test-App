@@ -143,13 +143,28 @@ struct AverageSpeedFormatter {
 }
 
 struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
+    let items: [Any]
+    var activityItems: [Any] { items } // Alias for compatibility
     
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    init(items: [Any]) {
+        self.items = items
     }
     
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    init(activityItems: [Any]) {
+        self.items = activityItems
+    }
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: items,
+            applicationActivities: nil
+        )
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
+        // No update needed
+    }
 }
 
 // MARK: - View Model

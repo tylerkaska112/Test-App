@@ -14,7 +14,6 @@ struct AchievementBadge: Identifiable, Hashable {
     let category: AchievementCategory
     let valueFormatter: (Double) -> String
     
-    // Backward-compatible initializer (without id and category)
     init(title: String, systemImage: String, achieved: Bool, description: String,
          currentValue: Double, targetValue: Double, unlockedDate: Date?,
          valueFormatter: @escaping (Double) -> String) {
@@ -26,11 +25,10 @@ struct AchievementBadge: Identifiable, Hashable {
         self.currentValue = currentValue
         self.targetValue = targetValue
         self.unlockedDate = unlockedDate
-        self.category = .special // Default category
+        self.category = .special
         self.valueFormatter = valueFormatter
     }
     
-    // Full initializer (with id and category)
     init(id: String, title: String, systemImage: String, achieved: Bool, description: String,
          currentValue: Double, targetValue: Double, unlockedDate: Date?,
          category: AchievementCategory, valueFormatter: @escaping (Double) -> String) {
@@ -55,7 +53,6 @@ struct AchievementBadge: Identifiable, Hashable {
         max(targetValue - currentValue, 0)
     }
     
-    // Hashable conformance
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
@@ -224,7 +221,6 @@ class AchievementManager: ObservableObject {
         
         var achievements: [AchievementBadge] = []
         
-        // Trip count achievements
         let tripThresholds: [(Int, String, String, String)] = [
             (1, "car", "First Trip", "Complete your very first trip."),
             (10, "car.fill", "10 Trips", "Reach 10 total trips."),
@@ -253,7 +249,6 @@ class AchievementManager: ObservableObject {
             )
         }
         
-        // Content achievements
         let contentAchievements: [(Int, String, String, String, String, Int)] = [
             (10, "storyteller", "Storyteller", "text.bubble", "Add notes to 10 different trips.", tripsWithNotes),
             (5, "photographer", "Photographer", "camera", "Add photos to 5 different trips.", tripsWithPhotos),
@@ -313,8 +308,6 @@ struct AchievementsView: View {
     @State private var timer: Timer?
     
     init() {
-        // This needs to be initialized properly with the actual tripManager
-        // For now, we'll use a placeholder approach
         let manager = AchievementManager(tripManager: TripManager())
         _achievementManager = StateObject(wrappedValue: manager)
     }
@@ -748,7 +741,6 @@ struct AchievementDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Achievement Icon
                     ZStack {
                         Circle()
                             .fill(achievement.achieved ? Color.yellow.opacity(0.2) : Color.gray.opacity(0.1))
@@ -771,13 +763,11 @@ struct AchievementDetailView: View {
                         }
                     }
                     
-                    // Title
                     Text(achievement.title)
                         .font(.title)
                         .fontWeight(.bold)
                         .multilineTextAlignment(.center)
                     
-                    // Status Badge
                     HStack(spacing: 6) {
                         Image(systemName: achievement.achieved ? "checkmark.circle.fill" : "lock.circle.fill")
                         Text(achievement.achieved ? "Unlocked" : "Locked")
@@ -794,7 +784,6 @@ struct AchievementDetailView: View {
                     Divider()
                         .padding(.horizontal)
                     
-                    // Description
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Description")
                             .font(.headline)
@@ -804,7 +793,6 @@ struct AchievementDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     
-                    // Unlock Date or Progress
                     if achievement.achieved {
                         if let unlockDate = achievement.unlockedDate {
                             VStack(alignment: .leading, spacing: 12) {

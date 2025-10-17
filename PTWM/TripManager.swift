@@ -288,7 +288,12 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     // MARK: - Background Handling
     @objc private func handleAppBackgrounding() {
-        if currentTripStartLocation != nil, let start = currentTripStartLocation, let startTime = currentTripStartTime {
+        // Only save if there's an active trip with meaningful distance
+        if currentTripStartLocation != nil,
+           let start = currentTripStartLocation,
+           let startTime = currentTripStartTime,
+           currentDistance > 0.05 { // At least 0.05 miles
+            
             let tripState = OngoingTripState(
                 startLocation: start,
                 startTime: startTime,
@@ -301,6 +306,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 UserDefaults.standard.set(data, forKey: currentTripKey)
             }
         } else {
+            // No meaningful trip to save, clear any existing recovery data
             UserDefaults.standard.removeObject(forKey: currentTripKey)
         }
     }
@@ -324,7 +330,23 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     private func autosaveOngoingTripState() {
-        guard let start = currentTripStartLocation, let startTime = currentTripStartTime else { return }
+        guard let start = currentTripStartLocation,
+              let startTime = currentTripStartTime else {
+            return
+        }
+        
+        // Only autosave if there's meaningful progress
+        guard currentDistance > 0.05 else { return } // At least 0.05 miles
+        
+        // Throttle saves - only save every 10 seconds at most
+        let lastSaveKey = "lastAutosaveTime"
+        let now = Date()
+        if let lastSave = UserDefaults.standard.object(forKey: lastSaveKey) as? Date,
+           now.timeIntervalSince(lastSave) < 10 {
+            return
+        }
+        UserDefaults.standard.set(now, forKey: lastSaveKey)
+        
         let tripState = OngoingTripState(
             startLocation: start,
             startTime: startTime,
@@ -339,8 +361,24 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     private func restoreOngoingTripIfNeeded() {
+        // Check if there's a recovery state
         guard let data = UserDefaults.standard.data(forKey: currentTripKey),
-              let state = try? JSONDecoder().decode(OngoingTripState.self, from: data) else { return }
+              let state = try? JSONDecoder().decode(OngoingTripState.self, from: data) else {
+            return
+        }
+        
+        // CRITICAL FIX: Remove the recovery key IMMEDIATELY to prevent duplicate recoveries
+        UserDefaults.standard.removeObject(forKey: currentTripKey)
+        
+        // Check if this trip was already recovered by comparing timestamps
+        let recoveryTimestamp = state.startTime
+        if let lastRecoveredTrip = trips.first(where: {
+            $0.isRecovered &&
+            abs($0.startTime.timeIntervalSince(recoveryTimestamp)) < 60
+        }) {
+            print("Trip already recovered, skipping duplicate recovery")
+            return
+        }
         
         let start = state.startLocation.clCoordinate
         self.currentTripStartLocation = start
@@ -351,6 +389,7 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         var recoveredRoute = state.route.map { $0.clCoordinate }
         let endpoint: CLLocationCoordinate2D? = userLocation ?? recoveredRoute.last
         
+        // Ensure we have at least 2 points in the route
         if recoveredRoute.isEmpty {
             if let endpoint = endpoint, endpoint != start {
                 recoveredRoute = [start, endpoint]
@@ -369,19 +408,48 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
         
+        // Calculate total distance from recovered route
         var totalDistanceMiles = 0.0
         for i in 1..<recoveredRoute.count {
             let prev = recoveredRoute[i-1]
             let curr = recoveredRoute[i]
             let prevLoc = CLLocation(latitude: prev.latitude, longitude: prev.longitude)
             let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
-            totalDistanceMiles += currLoc.distance(from: prevLoc) / 1609.34
+            let distance = currLoc.distance(from: prevLoc) / 1609.34
+            
+            // Filter out unrealistic jumps (likely GPS errors)
+            if distance < 50 { // Ignore jumps over 50 miles between points
+                totalDistanceMiles += distance
+            }
         }
-        self.currentDistance = totalDistanceMiles
         
-        sendNotification(title: "Trip Recovered", body: "Your previous trip was recovered and saved.")
-        self.endTrip(withNotes: "", pay: "", start: start, end: endpoint, route: recoveredRoute, isRecovered: true, averageSpeed: nil)
-        UserDefaults.standard.removeObject(forKey: currentTripKey)
+        // Only recover if the trip has meaningful distance
+        if totalDistanceMiles >= 0.1 { // At least 0.1 miles
+            self.currentDistance = totalDistanceMiles
+            
+            sendNotification(
+                title: "Trip Recovered",
+                body: String(format: "Previous trip recovered: %.2f miles", totalDistanceMiles)
+            )
+            
+            self.endTrip(
+                withNotes: "",
+                pay: "",
+                start: start,
+                end: endpoint,
+                route: recoveredRoute,
+                isRecovered: true,
+                averageSpeed: nil
+            )
+        } else {
+            print("Recovered trip distance too small, discarding: \(totalDistanceMiles) miles")
+        }
+        
+        // Reset state
+        self.currentTripStartLocation = nil
+        self.currentTripStartTime = nil
+        self.currentRoute = []
+        self.currentDistance = 0
     }
     
     // MARK: - Notification Helper

@@ -694,38 +694,58 @@ struct InteractiveTripMapView: View {
         let videoSize = CGSize(width: 1080, height: 1920)
         let fps: Int32 = 30
         
-        // Create one frame per route point for complete accuracy
-        let framesPerPoint = 2 // Show each coordinate for 2 frames (smoother motion)
+        // Always aim for 30 seconds max, but shorter trips can be their natural length
+        let maxDuration: Double = 30.0
+        let minFramesPerPoint = 1 // At least 1 frame per point for smoothness
+        
+        // Calculate ideal duration (2 frames per point for smooth animation)
+        let idealFramesPerPoint = 2
+        let idealTotalFrames = routePoints.count * idealFramesPerPoint
+        let idealDuration = Double(idealTotalFrames) / Double(fps)
+        
+        // Determine actual duration and frames
+        let actualDuration: Double
+        let framesPerPoint: Int
+        
+        if idealDuration <= maxDuration {
+            // Short trip: use ideal duration (natural speed)
+            actualDuration = idealDuration
+            framesPerPoint = idealFramesPerPoint
+        } else {
+            // Long trip: compress to 30 seconds but maintain smoothness
+            actualDuration = maxDuration
+            let totalFrames = Int(actualDuration * Double(fps))
+            framesPerPoint = max(minFramesPerPoint, totalFrames / routePoints.count)
+        }
+        
         let totalFrames = routePoints.count * framesPerPoint
         
-        // Calculate video duration based on total frames
-        let videoDuration = Double(totalFrames) / Double(fps)
+        print("Creating video: \(routePoints.count) points, \(totalFrames) frames, \(String(format: "%.1f", actualDuration)) seconds")
+        print("Animation: \(framesPerPoint) frames per point")
         
-        print("Creating video: \(routePoints.count) points, \(totalFrames) frames, \(String(format: "%.1f", videoDuration)) seconds")
-        
-        // Generate map snapshots for EVERY route point for perfectly smooth animation
+        // Generate map snapshots - one per route point for perfectly smooth drawing
         var cachedSnapshots: [Int: UIImage] = [:]
         
         await MainActor.run {
             self.exportProgress = 0.05
         }
         
-        // Process in batches to avoid memory issues
+        // Generate snapshots for each unique point
         let batchSize = 20
-        let uniquePoints = Set(stride(from: 0, to: totalFrames, by: framesPerPoint).map { $0 })
-        let pointFrames = Array(uniquePoints).sorted()
+        let pointIndices = Array(0..<routePoints.count)
         
-        print("Generating \(pointFrames.count) unique map snapshots...")
+        print("Generating \(pointIndices.count) map snapshots for smooth animation...")
         
-        for batchStart in stride(from: 0, to: pointFrames.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, pointFrames.count)
-            let batch = Array(pointFrames[batchStart..<batchEnd])
+        for batchStart in stride(from: 0, to: pointIndices.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, pointIndices.count)
+            let batch = Array(pointIndices[batchStart..<batchEnd])
             
             await withTaskGroup(of: (Int, UIImage?).self) { group in
-                for frameIndex in batch {
+                for pointIndex in batch {
                     group.addTask {
-                        let pointIndex = frameIndex / framesPerPoint
                         let snapshot = await self.generateMapSnapshot(for: pointIndex, size: videoSize)
+                        // Store snapshot at the frame index where this point starts
+                        let frameIndex = pointIndex * framesPerPoint
                         return (frameIndex, snapshot)
                     }
                 }
@@ -737,14 +757,13 @@ struct InteractiveTripMapView: View {
                 }
             }
             
-            let progress = 0.05 + (0.45 * Double(batchEnd) / Double(pointFrames.count))
+            let progress = 0.05 + (0.45 * Double(batchEnd) / Double(pointIndices.count))
             await MainActor.run {
                 self.exportProgress = progress
             }
             
-            // Optional: Small delay to prevent overwhelming the system
             if batchStart % 100 == 0 && batchStart > 0 {
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
         
@@ -763,7 +782,7 @@ struct InteractiveTripMapView: View {
             AVVideoWidthKey: videoSize.width,
             AVVideoHeightKey: videoSize.height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 6000000, // Higher bitrate for better quality
+                AVVideoAverageBitRateKey: 6000000,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                 AVVideoMaxKeyFrameIntervalKey: fps
             ]
@@ -792,16 +811,16 @@ struct InteractiveTripMapView: View {
                 while videoWriterInput.isReadyForMoreMediaData && frameCount < totalFrames {
                     let presentationTime = CMTime(value: Int64(frameCount), timescale: fps)
                     
-                    // Map frame to exact route point
+                    // Map frame to route point
                     let pointIndex = frameCount / framesPerPoint
                     
-                    // Find the snapshot for this point (should exist for every point now)
-                    let snapshotFrameIndex = (frameCount / framesPerPoint) * framesPerPoint
+                    // Get the snapshot for this point (stored at the start frame of each point)
+                    let snapshotFrameIndex = pointIndex * framesPerPoint
                     let cachedSnapshot = cachedSnapshots[snapshotFrameIndex]
                     
                     if let pixelBuffer = self.createVideoFrameFast(
                         size: videoSize,
-                        pointIndex: pointIndex,
+                        pointIndex: min(pointIndex, self.routePoints.count - 1),
                         totalPoints: self.routePoints.count,
                         cachedMapSnapshot: cachedSnapshot
                     ) {
@@ -810,7 +829,6 @@ struct InteractiveTripMapView: View {
                     
                     frameCount += 1
                     
-                    // Update progress more frequently
                     if frameCount % 20 == 0 {
                         let progress = 0.5 + (0.5 * Double(frameCount) / Double(totalFrames))
                         Task { @MainActor in

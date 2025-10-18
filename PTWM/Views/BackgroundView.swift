@@ -51,7 +51,7 @@ struct BackgroundView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingImagePicker) {  // Changed from $showImagePicker
+            .sheet(isPresented: $showingImagePicker) {
                 ImagePicker.photoLibrary { result in
                     switch result {
                     case .success(let image):

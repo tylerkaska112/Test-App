@@ -3,15 +3,11 @@ import Foundation
 // MARK: - Storage Calculator Helper
 
 struct StorageCalculator {
-    /// Calculates the total storage used by trip data
     static func calculateTripStorageSize(trips: [Trip]) -> Int64 {
         var totalSize: Int64 = 0
         
-        // Calculate base trip data size (rough estimate)
-        // Each trip object in memory is approximately 500 bytes
         totalSize += Int64(trips.count * 500)
         
-        // Add size of audio files
         for trip in trips {
             for audioURL in trip.audioNotes {
                 if let fileSize = fileSize(at: audioURL) {
@@ -20,7 +16,6 @@ struct StorageCalculator {
             }
         }
         
-        // Add size of photo files
         for trip in trips {
             for photoURL in trip.photoURLs {
                 if let fileSize = fileSize(at: photoURL) {
@@ -29,7 +24,6 @@ struct StorageCalculator {
             }
         }
         
-        // Add size of route coordinates (approximately 24 bytes per coordinate)
         for trip in trips {
             totalSize += Int64(trip.routeCoordinates.count * 24)
         }
@@ -37,7 +31,6 @@ struct StorageCalculator {
         return totalSize
     }
     
-    /// Gets the file size at a given URL
     private static func fileSize(at url: URL) -> Int64? {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -47,7 +40,6 @@ struct StorageCalculator {
         }
     }
     
-    /// Formats bytes into a human-readable string
     static func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
@@ -57,7 +49,6 @@ struct StorageCalculator {
         return formatter.string(fromByteCount: bytes)
     }
     
-    /// Calculates storage breakdown by category
     static func storageBreakdown(trips: [Trip]) -> StorageBreakdown {
         var audioSize: Int64 = 0
         var photoSize: Int64 = 0
@@ -65,21 +56,18 @@ struct StorageCalculator {
         var routeDataSize: Int64 = 0
         
         for trip in trips {
-            // Audio files
             for audioURL in trip.audioNotes {
                 if let size = fileSize(at: audioURL) {
                     audioSize += size
                 }
             }
             
-            // Photo files
             for photoURL in trip.photoURLs {
                 if let size = fileSize(at: photoURL) {
                     photoSize += size
                 }
             }
             
-            // Route coordinates
             routeDataSize += Int64(trip.routeCoordinates.count * 24)
         }
         

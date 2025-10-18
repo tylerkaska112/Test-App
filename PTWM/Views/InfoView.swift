@@ -179,7 +179,7 @@ struct InfoView: View {
     // MARK: - Actions
     
     private func rateApp() {
-        // Replace YOUR_APP_ID with your actual App Store ID
+        // Replace YOUR_APP_ID
         guard let url = URL(string: "https://apps.apple.com/app/idYOUR_APP_ID?action=write-review") else {
             return
         }
@@ -197,7 +197,6 @@ struct InfoView: View {
             applicationActivities: nil
         )
         
-        // For iPad support
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = windowScene.windows.first,
            let rootVC = window.rootViewController {

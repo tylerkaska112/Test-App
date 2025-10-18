@@ -56,12 +56,10 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         mapView.userTrackingMode = isNavigating ? .followWithHeading : .follow
         mapView.mapType = mapType
         
-        // Apply settings - FIXED: Use showsScale instead of showScale
         mapView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
         mapView.showsCompass = showCompass
-        mapView.showsScale = showScale  // FIXED: This is the correct property name
+        mapView.showsScale = showScale
         
-        // Enable 3D buildings
         if show3DBuildings {
             mapView.camera.pitch = 45
         }
@@ -73,7 +71,7 @@ struct RouteMapViewWrapper: UIViewRepresentable {
         uiView.mapType = mapType
         uiView.pointOfInterestFilter = showPOI ? .includingAll : .excludingAll
         uiView.showsCompass = showCompass
-        uiView.showsScale = showScale  // FIXED: This is the correct property name
+        uiView.showsScale = showScale
         
         let heading = uiView.userLocation.heading?.trueHeading ?? uiView.userLocation.location?.course ?? 0
         let currentRegionCenter = uiView.region.center
@@ -173,10 +171,8 @@ struct ExpressRideView: View {
     @AppStorage("selectedMapStyle") private var selectedMapStyle: Int = 0
     @AppStorage("navigationVoiceIdentifier") private var navigationVoiceIdentifier: String = ""
     
-    // Consolidated Navigation State
     @State private var navigationState = NavigationState()
     
-    // UI State
     @State private var activeSearchTasks: [UUID: Task<Void, Never>] = [:]
     @State private var enhancedSearchResults: [EnhancedSearchResult] = []
     @State private var showSpeedWarning = false
@@ -204,7 +200,6 @@ struct ExpressRideView: View {
     @AppStorage("fontSizeMultiplier") private var fontSizeMultiplier: Double = 1.0
     @AppStorage("enableSpeedTracking") private var enableSpeedTracking: Bool = false
     
-    // Speech
     @State private var speechSynthesizer = AVSpeechSynthesizer()
     @State private var lastSpokenStepIndex: Int?
     
@@ -212,7 +207,6 @@ struct ExpressRideView: View {
         let mapType = getMapType()
         
         return ZStack(alignment: .top) {
-            // Welcome Banner
             if showBanner {
                 Text("Welcome Back!")
                     .font(.headline)
@@ -226,7 +220,6 @@ struct ExpressRideView: View {
                     .zIndex(10)
             }
             
-            // Rerouting Indicator
             if navigationState.isRerouting {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -244,7 +237,6 @@ struct ExpressRideView: View {
                 .zIndex(9)
             }
             
-            // Route Calculation Indicator
             if isCalculatingRoute {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -262,10 +254,8 @@ struct ExpressRideView: View {
                 .zIndex(9)
             }
             
-            // Map Layer
             mapLayer(mapType: mapType)
             
-            // Navigation UI
             if navigationState.isNavigating && isTripStarted {
                 VStack(spacing: 2) {
                     navigationInstructions
@@ -274,18 +264,15 @@ struct ExpressRideView: View {
                 .padding(.top, 6)
             }
             
-            // Recenter & Mute Buttons
             if navigationState.route != nil && isTripStarted {
                 recenterButton
             }
             
-            // Bottom Panel
             VStack {
                 Spacer()
                 bottomPanel
             }
             
-            // Favorites Button (only when not navigating)
             if !(navigationState.route != nil && isTripStarted) {
                 favoritesButton
             }
@@ -482,7 +469,6 @@ struct ExpressRideView: View {
     // MARK: - Distance Banner
     private var distanceBanner: some View {
         HStack {
-            // Distance
             Text("Distance: \(DistanceFormatterHelper.string(for: tripManager.currentDistance, useKilometers: useKilometers))")
                 .font(.system(size: 17 * fontSizeMultiplier, weight: .semibold))
                 .padding(.horizontal, 16)
@@ -493,7 +479,6 @@ struct ExpressRideView: View {
             
             Spacer().frame(width: 12)
             
-            // Current Speed (if speed tracking enabled)
             if enableSpeedTracking && tripManager.currentSpeed > 0 {
                 HStack(spacing: 6) {
                     Image(systemName: "speedometer")
@@ -510,7 +495,6 @@ struct ExpressRideView: View {
                 Spacer().frame(width: 12)
             }
             
-            // ETA
             if let eta = navigationState.estimatedTravelTime {
                 Text("ETA: \(formatETA(eta))")
                     .font(.system(size: 17 * fontSizeMultiplier, weight: .semibold))
@@ -573,7 +557,6 @@ struct ExpressRideView: View {
             HStack {
                 Spacer()
                 VStack(spacing: 16) {
-                    // Mute Button
                     Button {
                         provideFeedback(.medium)
                         isMuted.toggle()
@@ -593,7 +576,6 @@ struct ExpressRideView: View {
                     .accessibilityHint("Toggles voice navigation instructions")
                     .accessibilityIdentifier("MuteUnmuteButton")
                     
-                    // Recenter Button
                     Button {
                         provideFeedback(.light)
                         shouldRecenter = true
@@ -782,7 +764,6 @@ struct ExpressRideView: View {
     
     private var addressEntryPanel: some View {
         VStack(spacing: 0) {
-            // Search Bar
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -827,7 +808,6 @@ struct ExpressRideView: View {
             )
             .padding(.horizontal, 8)
             
-            // Enhanced Suggestions List
             if showSuggestions && !enhancedSearchResults.isEmpty {
                 enhancedSuggestionsList
             }
@@ -842,7 +822,6 @@ struct ExpressRideView: View {
                         selectSuggestion(result.completion)
                     }) {
                         HStack(spacing: 12) {
-                            // Location Icon
                             ZStack {
                                 Circle()
                                     .fill(Color.accentColor.opacity(0.1))
@@ -852,7 +831,6 @@ struct ExpressRideView: View {
                                     .font(.system(size: 20))
                             }
                             
-                            // Address Information
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(result.completion.title)
                                     .font(.system(size: 16, weight: .semibold))
@@ -866,7 +844,6 @@ struct ExpressRideView: View {
                                         .lineLimit(1)
                                 }
                                 
-                                // Distance and Time Info
                                 HStack(spacing: 12) {
                                     if result.isCalculating {
                                         HStack(spacing: 4) {
@@ -877,7 +854,6 @@ struct ExpressRideView: View {
                                                 .foregroundColor(.secondary)
                                         }
                                     } else if let distance = result.distance, let time = result.travelTime {
-                                        // Distance Badge
                                         HStack(spacing: 4) {
                                             Image(systemName: "location.fill")
                                                 .font(.system(size: 10))
@@ -890,7 +866,6 @@ struct ExpressRideView: View {
                                         .foregroundColor(.blue)
                                         .cornerRadius(6)
                                         
-                                        // Time Badge
                                         HStack(spacing: 4) {
                                             Image(systemName: "clock.fill")
                                                 .font(.system(size: 10))
@@ -908,7 +883,6 @@ struct ExpressRideView: View {
                             
                             Spacer()
                             
-                            // Chevron
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
@@ -940,26 +914,21 @@ struct ExpressRideView: View {
             return
         }
         
-        // Cancel any existing search tasks
         for task in activeSearchTasks.values {
             task.cancel()
         }
         activeSearchTasks.removeAll()
         
-        // Initialize results with calculating state
         enhancedSearchResults = suggestions.map {
             EnhancedSearchResult(completion: $0, isCalculating: true)
         }
         
-        // Limit to first 5 suggestions to avoid overwhelming the API
         let limitedSuggestions = Array(suggestions.prefix(5))
         
-        // Calculate distance and time for each suggestion with delay
         for (index, completion) in limitedSuggestions.enumerated() {
             let resultId = enhancedSearchResults[index].id
             
             let task = Task {
-                // Stagger requests to avoid rate limiting (200ms delay between each)
                 try? await Task.sleep(nanoseconds: UInt64(index) * 200_000_000)
                 
                 guard !Task.isCancelled else { return }
@@ -988,7 +957,6 @@ struct ExpressRideView: View {
                 return
             }
             
-            // Calculate route
             let sourcePlacemark = MKPlacemark(coordinate: userLocation)
             let request = MKDirections.Request()
             request.source = MKMapItem(placemark: sourcePlacemark)
@@ -1011,7 +979,6 @@ struct ExpressRideView: View {
                     }
                 }
             } catch {
-                // Route calculation failed, just show location without distance/time
                 await MainActor.run {
                     if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }) {
                         enhancedSearchResults[idx].isCalculating = false
@@ -1019,7 +986,6 @@ struct ExpressRideView: View {
                 }
             }
         } catch {
-            // Search failed, just show location without distance/time
             await MainActor.run {
                 if let idx = enhancedSearchResults.firstIndex(where: { $0.id == resultId }) {
                     enhancedSearchResults[idx].isCalculating = false
@@ -1126,7 +1092,7 @@ struct ExpressRideView: View {
         checkStepProximity()
         updateRemainingMiles()
         checkOffRouteAndReroute()
-        checkSpeedLimit() // NEW
+        checkSpeedLimit()
     }
 
     private func checkSpeedLimit() {
@@ -1135,7 +1101,6 @@ struct ExpressRideView: View {
             return
         }
         
-        // Get current speed from TripManager
         let currentSpeedMPH = tripManager.currentSpeed
         
         if currentSpeedMPH > speedLimitThreshold {
@@ -1143,7 +1108,6 @@ struct ExpressRideView: View {
                 showSpeedWarning = true
                 provideFeedback(.heavy)
                 
-                // Optional: Speak warning if not muted
                 if !isMuted {
                     let utterance = AVSpeechUtterance(string: "Speed limit exceeded")
                     utterance.rate = 0.5

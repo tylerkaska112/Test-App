@@ -1,10 +1,3 @@
-//
-//  BackgroundWrapper.swift
-//  waylon
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import SwiftUI
 
 struct BackgroundWrapper<Content: View>: View {

@@ -1,10 +1,3 @@
-//
-//  MapPoint.swift
-//  Photo Tracker
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import Foundation
 import SwiftUI
 import CoreLocation

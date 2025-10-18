@@ -1,4 +1,3 @@
-// NOTE: Unlocking with Face ID only removes the overlay, does not dismiss the screen or switch tabs.
 import SwiftUI
 import Charts
 import LocalAuthentication
@@ -357,7 +356,6 @@ struct MileageReportView: View {
                         }
                         .padding(.horizontal)
                         
-                        // Statistics Card
                         if !filteredTripsByCategory.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Statistics")
@@ -471,9 +469,7 @@ struct MileageReportView: View {
                         Spacer()
                     }
                     .refreshable {
-                        // Trigger refresh of trip data if needed
-                        // This could be extended to sync with cloud or reload data
-                        try? await Task.sleep(nanoseconds: 500_000_000) // Small delay for UI feedback
+                        try? await Task.sleep(nanoseconds: 500_000_000)
                     }
                     .navigationTitle("Mileage Report")
                     .toolbar {
@@ -525,7 +521,7 @@ struct MileageReportView: View {
                             ToolbarItem(placement: .navigationBarLeading) {
                                 Button("Cancel") {
                                     showingDateRangePicker = false
-                                    selectedFilter = .last7 // Reset to default
+                                    selectedFilter = .last7
                                 }
                             }
                             ToolbarItem(placement: .navigationBarTrailing) {
@@ -552,7 +548,6 @@ struct MileageReportView: View {
                     if success {
                         isAuthenticated = true
                         showAuthError = false
-                        // Unlocking now only dismisses the lock overlay, does not dismiss the view or navigate elsewhere.
                         print("[MileageReportView] Face ID unlock successful. Lock overlay dismissed, staying on report page.")
                     } else {
                         isAuthenticated = false
@@ -601,7 +596,6 @@ struct MileageReportView: View {
             csvContent += "\(formatter.string(from: trip.startTime)),\(startTime),\(endTime),\(trip.reason),\(distance),\(duration),\(startLocation),\(endLocation)\n"
         }
         
-        // Add summary row
         csvContent += "\nSummary:\n"
         csvContent += "Total Distance (\(distanceUnit)),\(String(format: "%.2f", totalMiles * conversionFactor))\n"
         csvContent += "Total Drive Time,\(totalDriveTimeFormatted)\n"

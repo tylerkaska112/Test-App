@@ -1,10 +1,3 @@
-//
-//  Trip.swift
-//  waylon
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import Foundation
 import CoreLocation
 
@@ -27,12 +20,10 @@ struct Trip: Identifiable, Codable, Equatable {
     
     // MARK: - Computed Properties
     
-    /// Duration of the trip in seconds
     var duration: TimeInterval {
         endTime.timeIntervalSince(startTime)
     }
     
-    /// Formatted duration string (e.g., "1h 23m")
     var formattedDuration: String {
         let hours = Int(duration) / 3600
         let minutes = (Int(duration) % 3600) / 60
@@ -44,39 +35,32 @@ struct Trip: Identifiable, Codable, Equatable {
         }
     }
     
-    /// Distance in miles (converted from meters)
     var distanceInMiles: Double {
         distance * 0.000621371
     }
     
-    /// Distance in kilometers (converted from meters)
     var distanceInKilometers: Double {
         distance / 1000.0
     }
     
-    /// Formatted distance string in miles
     var formattedDistance: String {
         String(format: "%.2f mi", distanceInMiles)
     }
     
-    /// Average speed in miles per hour
     var averageSpeedMPH: Double? {
         guard let speed = averageSpeed else { return nil }
         return speed * 2.23694 // Convert m/s to mph
     }
     
-    /// Formatted average speed string
     var formattedAverageSpeed: String? {
         guard let mph = averageSpeedMPH else { return nil }
         return String(format: "%.1f mph", mph)
     }
     
-    /// Whether this trip has any media attached
     var hasMedia: Bool {
         !audioNotes.isEmpty || !photoURLs.isEmpty
     }
     
-    /// Total number of media items
     var mediaCount: Int {
         audioNotes.count + photoURLs.count
     }
@@ -121,10 +105,9 @@ struct Trip: Identifiable, Codable, Equatable {
 // MARK: - Trip Extensions
 
 extension Trip {
-    /// Creates a sample trip for previews and testing
     static var sample: Trip {
         Trip(
-            distance: 25000, // 25 km
+            distance: 25000,
             notes: "Regular commute to office",
             pay: "$45.00",
             startTime: Date().addingTimeInterval(-3600),
@@ -134,28 +117,24 @@ extension Trip {
         )
     }
     
-    /// Validates that the trip data is consistent
     func isValid() -> Bool {
         guard endTime > startTime else { return false }
         guard distance >= 0 else { return false }
         return true
     }
     
-    /// Returns a copy of the trip with updated notes
     func withNotes(_ newNotes: String) -> Trip {
         var copy = self
         copy.notes = newNotes
         return copy
     }
     
-    /// Returns a copy of the trip with an added photo
     func addingPhoto(_ photoURL: URL) -> Trip {
         var copy = self
         copy.photoURLs.append(photoURL)
         return copy
     }
     
-    /// Returns a copy of the trip with an added audio note
     func addingAudioNote(_ audioURL: URL) -> Trip {
         var copy = self
         copy.audioNotes.append(audioURL)

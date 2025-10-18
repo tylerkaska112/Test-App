@@ -1,9 +1,3 @@
-//  ContactInfoView.swift
-//  waylon
-//
-//  Created by Assistant on 6/30/25.
-//
-
 import SwiftUI
 
 struct ContactInfoView: View {
@@ -14,7 +8,6 @@ struct ContactInfoView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 32) {
-                    // Header Section
                     VStack(spacing: 12) {
                         Image(systemName: "person.circle.fill")
                             .font(.system(size: 80))
@@ -26,7 +19,6 @@ struct ContactInfoView: View {
                     }
                     .padding(.top, 20)
                     
-                    // Contact Cards
                     VStack(spacing: 16) {
                         ContactCard(
                             icon: "envelope.fill",

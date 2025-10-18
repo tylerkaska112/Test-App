@@ -144,7 +144,7 @@ struct AverageSpeedFormatter {
 
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
-    var activityItems: [Any] { items } // Alias for compatibility
+    var activityItems: [Any] { items }
     
     init(items: [Any]) {
         self.items = items
@@ -163,7 +163,6 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-        // No update needed
     }
 }
 
@@ -553,7 +552,6 @@ struct TripLogView: View {
                 }
             }
             
-            // Total Duration Display
             HStack(spacing: 16) {
                 VStack(spacing: 4) {
                     Text("Total Duration")

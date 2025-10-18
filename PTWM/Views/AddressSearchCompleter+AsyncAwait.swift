@@ -17,13 +17,10 @@ class AsyncAddressSearchCompleter: NSObject, ObservableObject {
     }
     
     func updateQuery(_ query: String) async {
-        // Cancel any ongoing search
         searchTask?.cancel()
         
-        // Clear previous error
         errorMessage = nil
         
-        // Handle empty query
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedQuery.isEmpty {
             suggestions = []
@@ -33,12 +30,9 @@ class AsyncAddressSearchCompleter: NSObject, ObservableObject {
         
         isSearching = true
         
-        // Start new search with debouncing
         searchTask = Task {
-            // Add debouncing delay
             try? await Task.sleep(for: .milliseconds(300))
             
-            // Check if task was cancelled
             if Task.isCancelled { return }
             
             await performSearch(query: trimmedQuery)
@@ -48,8 +42,6 @@ class AsyncAddressSearchCompleter: NSObject, ObservableObject {
     private func performSearch(query: String) async {
         completer.queryFragment = query
     }
-    
-    // Additional methods remain the same...
 }
 
 extension AsyncAddressSearchCompleter: MKLocalSearchCompleterDelegate {

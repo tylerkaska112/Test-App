@@ -1,4 +1,3 @@
-// Enhanced OnboardingView with improved UX, accessibility, and validation
 import SwiftUI
 import UIKit
 
@@ -21,7 +20,6 @@ struct OnboardingView: View {
                 .ignoresSafeArea()
             
             VStack {
-                // Skip button for faster navigation
                 HStack {
                     Spacer()
                     if currentPage < 2 {
@@ -138,7 +136,6 @@ struct WelcomePage: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)
             
-            // Feature highlights
             VStack(alignment: .leading, spacing: 16) {
                 FeatureBullet(icon: "map.fill", text: "Track your journeys in real-time")
                 FeatureBullet(icon: "photo.fill", text: "Attach photos to locations")
@@ -197,7 +194,6 @@ struct FirstNamePage: View {
         .padding(.top, 64)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
-            // Auto-focus the text field when this page appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 isTextFieldFocused = true
             }

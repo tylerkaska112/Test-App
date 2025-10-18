@@ -8,7 +8,6 @@ struct VoiceDownloadInfoView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Quick Action Button
                     Button {
                         openVoiceSettings()
                     } label: {
@@ -22,7 +21,6 @@ struct VoiceDownloadInfoView: View {
                     .controlSize(.large)
                     .padding(.bottom, 8)
 
-                    // Main Instructions
                     VStack(alignment: .leading, spacing: 16) {
                         Text("How to Download New Voices")
                             .font(.title2)
@@ -41,7 +39,6 @@ struct VoiceDownloadInfoView: View {
                         }
                     }
 
-                    // Voice Quality Recommendations
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "star.fill")
@@ -73,7 +70,6 @@ struct VoiceDownloadInfoView: View {
                     }
                     .padding(.vertical, 8)
 
-                    // Important Notes
                     VStack(alignment: .leading, spacing: 12) {
                         InfoBox(
                             icon: "clock",
@@ -94,7 +90,6 @@ struct VoiceDownloadInfoView: View {
                         )
                     }
 
-                    // Troubleshooting Section
                     VStack(alignment: .leading, spacing: 12) {
                         Button {
                             showingTroubleshooting.toggle()
@@ -133,7 +128,6 @@ struct VoiceDownloadInfoView: View {
                     }
                     .padding(.vertical, 8)
 
-                    // Additional Help
                     Link(destination: URL(string: "https://support.apple.com/guide/iphone/change-siri-settings-iph6b8f2c34/ios")!) {
                         HStack {
                             Image(systemName: "questionmark.circle.fill")

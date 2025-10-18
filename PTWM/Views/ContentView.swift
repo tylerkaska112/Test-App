@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  waylonApp
-//
-//  Created by Waylon on 10/15/21.
-//
-
 import SwiftUI
 import UIKit
 import Charts
@@ -29,7 +22,6 @@ struct ContentView: View {
     // MARK: - Body
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Welcome banner overlay
             if !showingOnboarding {
                 VStack {
                     WelcomeBackBanner()
@@ -39,7 +31,6 @@ struct ContentView: View {
                 }
             }
             
-            // Main tab view
             TabView(selection: $selectedTabIndex) {
                 ExpressRideView()
                     .tabItem {
@@ -119,16 +110,13 @@ struct ContentView: View {
     
     // MARK: - Methods
     private func setupInitialState() {
-        // Set initial tab only once
         if !ContentView.didSetInitialTab {
             selectedTabIndex = 0
             ContentView.didSetInitialTab = true
         }
         
-        // Configure tab bar appearance
         configureTabBarAppearance()
         
-        // Request location permission with user-friendly handling
         requestLocationPermissionWithFeedback()
     }
     
@@ -138,7 +126,6 @@ struct ContentView: View {
         appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
         appearance.backgroundColor = nil
         
-        // Add subtle shadow for better visual separation
         appearance.shadowColor = UIColor.black.withAlphaComponent(0.1)
         
         UITabBar.appearance().standardAppearance = appearance
@@ -154,10 +141,8 @@ struct ContentView: View {
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
         switch newPhase {
         case .active:
-            // App became active - good time to refresh if needed
             break
         case .background:
-            // App went to background
             break
         default:
             break

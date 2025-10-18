@@ -223,7 +223,6 @@ struct LocationDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
-                    // Map View
                     Map(coordinateRegion: .constant(region), annotationItems: [locationDetail]) { location in
                         MapMarker(coordinate: location.mapItem.placemark.coordinate, tint: .red)
                     }
@@ -231,7 +230,6 @@ struct LocationDetailView: View {
                     .allowsHitTesting(false)
                     
                     VStack(alignment: .leading, spacing: 20) {
-                        // Title
                         VStack(alignment: .leading, spacing: 8) {
                             Text(locationDetail.mapItem.name ?? "Location")
                                 .font(.title2)
@@ -274,7 +272,6 @@ struct LocationDetailView: View {
                             Divider()
                         }
                         
-                        // Action Buttons
                         VStack(spacing: 12) {
                             Button(action: {
                                 openInMaps()
@@ -469,7 +466,6 @@ struct AddressRowWithDistance: View {
                 }
             }
         } catch {
-            // Silently fail - distance won't be shown
         }
     }
 }

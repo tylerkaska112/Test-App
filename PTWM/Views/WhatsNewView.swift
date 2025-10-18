@@ -38,13 +38,19 @@ struct WhatsNewView: View {
         // New Features
         ReleaseNote(text: "Import your trip history from CSV or JSON files seamlessly", icon: "arrow.down.doc", category: .new),
         ReleaseNote(text: "Export any trip as a GPX file for use with other mapping apps", icon: "arrow.up.doc", category: .new),
+        ReleaseNote(text: "Export trips as MP4 videos to share your journeys visually", icon: "video.fill", category: .new),
         ReleaseNote(text: "View comprehensive trip statistics including total distance and averages", icon: "chart.bar.fill", category: .new),
         ReleaseNote(text: "Browse and filter all your unlocked achievements in one place", icon: "trophy.fill", category: .new),
+        ReleaseNote(text: "See distance to locations when searching and browsing places", icon: "location.circle.fill", category: .new),
         ReleaseNote(text: "Confirm trip endings with a safety prompt to avoid accidental stops", icon: "hand.raised.fill", category: .new),
         ReleaseNote(text: "Scrub through trip timelines to replay any moment from your journey", icon: "slider.horizontal.3", category: .new),
         ReleaseNote(text: "Unlock exciting new achievements and level up your driving experience", icon: "medal.fill", category: .new),
+        ReleaseNote(text: "Enable performance saver mode to optimize battery and data usage", icon: "battery.100.bolt", category: .new),
         ReleaseNote(text: "Calculate expenses using the official IRS mileage rate for businesses", icon: "dollarsign.circle.fill", category: .new),
         ReleaseNote(text: "Protect your privacy by blurring saved home and work locations on maps", icon: "eye.slash.fill", category: .new),
+        ReleaseNote(text: "Manage app storage with the new data and storage section in settings", icon: "internaldrive.fill", category: .new),
+        ReleaseNote(text: "Customize text size throughout the app for better readability", icon: "textformat.size", category: .new),
+        ReleaseNote(text: "Stay safe with speed warnings that alert you when driving too fast", icon: "exclamationmark.triangle.fill", category: .new),
         ReleaseNote(text: "Filter and search through your trip logs to find exactly what you need", icon: "line.3.horizontal.decrease.circle.fill", category: .new),
         
         // Improvements
@@ -65,15 +71,12 @@ struct WhatsNewView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
                     headerSection
                     
-                    // Release Notes by Category
                     ForEach([NoteCategory.new, .improved, .fixed], id: \.title) { category in
                         categorySection(for: category)
                     }
                     
-                    // Footer with toggle
                     footerSection
                 }
                 .padding()
@@ -83,7 +86,6 @@ struct WhatsNewView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Continue") {
-                        // Save preference if needed
                         if !showAgain {
                             UserDefaults.standard.set(currentVersion, forKey: "lastSeenWhatsNewVersion")
                         }

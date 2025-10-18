@@ -1,10 +1,3 @@
-//
-//  PTWMApp.swift
-//  PTWM
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import SwiftUI
 
 @main
@@ -28,7 +21,6 @@ struct PTWMApp: App {
     private func configureDefaultSettings() {
         let defaults = UserDefaults.standard
         
-        // Register default values if not already set
         if defaults.object(forKey: UserDefaultsKeys.appDarkMode) == nil {
             defaults.set(true, forKey: UserDefaultsKeys.appDarkMode)
         }

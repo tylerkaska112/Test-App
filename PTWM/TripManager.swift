@@ -1,10 +1,3 @@
-//
-//  TripManager.swift
-//  waylon
-//
-//  Enhanced with improved features and user experience
-//
-
 import Foundation
 import CoreLocation
 import SwiftUI
@@ -45,7 +38,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("batteryOptimizationEnabled") private var batteryOptimizationEnabled: Bool = true
     @AppStorage("roundTripDetection") private var roundTripDetection: Bool = true
     
-    // NEW: Add observers for battery saving mode and GPS accuracy
     @AppStorage("batterySavingMode") private var batterySavingMode: Bool = false {
         didSet {
             updateLocationAccuracy()
@@ -133,7 +125,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.pausesLocationUpdatesAutomatically = false
         locationManager.activityType = .automotiveNavigation
         
-        // Apply initial location accuracy settings
         updateLocationAccuracy()
         
         locationManager.startUpdatingLocation()
@@ -153,11 +144,9 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - NEW: Update Location Accuracy Based on Settings
     private func updateLocationAccuracy() {
         if batterySavingMode {
-            // Battery saving mode: use lower accuracy
             locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
             locationManager.distanceFilter = 50
         } else {
-            // Use custom GPS accuracy from slider
             let accuracy: CLLocationAccuracy
             
             switch gpsAccuracyMeters {
@@ -192,7 +181,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private func adjustLocationAccuracyForBattery() {
         guard batteryOptimizationEnabled else { return }
         
-        // Only adjust if NOT in battery saving mode (which has its own fixed settings)
         guard !batterySavingMode else { return }
         
         if batteryLevel < 0.20 {
@@ -203,7 +191,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             locationManager.distanceFilter = 10
         } else {
-            // Restore user's preferred accuracy
             updateLocationAccuracy()
         }
     }
@@ -223,7 +210,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         pausedRoute = currentRoute
         durationTimer?.invalidate()
         
-        // Reduce location accuracy during pause to save battery
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.distanceFilter = 100
         
@@ -239,7 +225,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         pauseStartTime = nil
         
-        // Restore location accuracy based on current settings
         updateLocationAccuracy()
         startDurationTimer()
         
@@ -288,11 +273,10 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     // MARK: - Background Handling
     @objc private func handleAppBackgrounding() {
-        // Only save if there's an active trip with meaningful distance
         if currentTripStartLocation != nil,
            let start = currentTripStartLocation,
            let startTime = currentTripStartTime,
-           currentDistance > 0.05 { // At least 0.05 miles
+           currentDistance > 0.05 {
             
             let tripState = OngoingTripState(
                 startLocation: start,
@@ -306,7 +290,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 UserDefaults.standard.set(data, forKey: currentTripKey)
             }
         } else {
-            // No meaningful trip to save, clear any existing recovery data
             UserDefaults.standard.removeObject(forKey: currentTripKey)
         }
     }
@@ -335,10 +318,8 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
         
-        // Only autosave if there's meaningful progress
-        guard currentDistance > 0.05 else { return } // At least 0.05 miles
+        guard currentDistance > 0.05 else { return }
         
-        // Throttle saves - only save every 10 seconds at most
         let lastSaveKey = "lastAutosaveTime"
         let now = Date()
         if let lastSave = UserDefaults.standard.object(forKey: lastSaveKey) as? Date,
@@ -361,16 +342,13 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     private func restoreOngoingTripIfNeeded() {
-        // Check if there's a recovery state
         guard let data = UserDefaults.standard.data(forKey: currentTripKey),
               let state = try? JSONDecoder().decode(OngoingTripState.self, from: data) else {
             return
         }
         
-        // CRITICAL FIX: Remove the recovery key IMMEDIATELY to prevent duplicate recoveries
         UserDefaults.standard.removeObject(forKey: currentTripKey)
         
-        // Check if this trip was already recovered by comparing timestamps
         let recoveryTimestamp = state.startTime
         if let lastRecoveredTrip = trips.first(where: {
             $0.isRecovered &&
@@ -389,7 +367,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         var recoveredRoute = state.route.map { $0.clCoordinate }
         let endpoint: CLLocationCoordinate2D? = userLocation ?? recoveredRoute.last
         
-        // Ensure we have at least 2 points in the route
         if recoveredRoute.isEmpty {
             if let endpoint = endpoint, endpoint != start {
                 recoveredRoute = [start, endpoint]
@@ -408,7 +385,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
         
-        // Calculate total distance from recovered route
         var totalDistanceMiles = 0.0
         for i in 1..<recoveredRoute.count {
             let prev = recoveredRoute[i-1]
@@ -417,14 +393,13 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             let currLoc = CLLocation(latitude: curr.latitude, longitude: curr.longitude)
             let distance = currLoc.distance(from: prevLoc) / 1609.34
             
-            // Filter out unrealistic jumps (likely GPS errors)
-            if distance < 50 { // Ignore jumps over 50 miles between points
+            if distance < 50 {
                 totalDistanceMiles += distance
             }
         }
         
-        // Only recover if the trip has meaningful distance
-        if totalDistanceMiles >= 0.1 { // At least 0.1 miles
+
+        if totalDistanceMiles >= 0.1 {
             self.currentDistance = totalDistanceMiles
             
             sendNotification(
@@ -445,7 +420,6 @@ class TripManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("Recovered trip distance too small, discarding: \(totalDistanceMiles) miles")
         }
         
-        // Reset state
         self.currentTripStartLocation = nil
         self.currentTripStartTime = nil
         self.currentRoute = []

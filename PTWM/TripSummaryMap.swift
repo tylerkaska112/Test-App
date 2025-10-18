@@ -1,10 +1,3 @@
-//
-//  TripSummaryMap.swift
-//  Photo Tracker
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import SwiftUI
 import MapKit
 
@@ -22,11 +15,9 @@ struct TripSummaryMap: UIViewRepresentable {
     }
     
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Remove existing annotations and overlays
         mapView.removeAnnotations(mapView.annotations)
         mapView.removeOverlays(mapView.overlays)
         
-        // Add start annotation
         if let start = trip.startCoordinate?.clCoordinate {
             let startPin = MKPointAnnotation()
             startPin.coordinate = start
@@ -34,7 +25,6 @@ struct TripSummaryMap: UIViewRepresentable {
             mapView.addAnnotation(startPin)
         }
         
-        // Add end annotation
         if let end = trip.endCoordinate?.clCoordinate {
             let endPin = MKPointAnnotation()
             endPin.coordinate = end
@@ -42,13 +32,11 @@ struct TripSummaryMap: UIViewRepresentable {
             mapView.addAnnotation(endPin)
         }
         
-        // Add route polyline
         let routeCoords = trip.routeCoordinates.map { $0.clCoordinate }
         if !routeCoords.isEmpty {
             let polyline = MKPolyline(coordinates: routeCoords, count: routeCoords.count)
             mapView.addOverlay(polyline)
             
-            // Fit map to show entire route with padding
             let mapRect = polyline.boundingMapRect
             mapView.setVisibleMapRect(
                 mapRect,
@@ -56,7 +44,6 @@ struct TripSummaryMap: UIViewRepresentable {
                 animated: true
             )
         } else if let start = trip.startCoordinate?.clCoordinate {
-            // If no route, center on start location
             let region = MKCoordinateRegion(
                 center: start,
                 span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
@@ -83,7 +70,6 @@ struct TripSummaryMap: UIViewRepresentable {
         }
         
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            // Don't customize user location annotation
             guard !annotation.isKind(of: MKUserLocation.self) else {
                 return nil
             }
@@ -98,7 +84,6 @@ struct TripSummaryMap: UIViewRepresentable {
                 annotationView?.annotation = annotation
             }
             
-            // Customize start vs end pins
             if annotation.title == "Start" {
                 annotationView?.markerTintColor = .systemGreen
                 annotationView?.glyphText = "🏁"

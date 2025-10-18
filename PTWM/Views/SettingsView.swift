@@ -1,9 +1,3 @@
-//  SettingsView.swift
-//  waylonApp
-//
-//  Created by Assistant on 6/30/25.
-//
-
 import SwiftUI
 import CoreLocation
 import AVFoundation
@@ -14,208 +8,22 @@ import UserNotifications
 import StoreKit
 import LocalAuthentication
 
-fileprivate let navigationVoices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
-fileprivate let navigationVoiceIdentifiers: [String] = navigationVoices.map { $0.identifier }
-
-class LocationPermissionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published var status: CLAuthorizationStatus = CLLocationManager.authorizationStatus()
-    private let manager = CLLocationManager()
-    
-    override init() {
-        super.init()
-        manager.delegate = self
-    }
-    
-    func request() {
-        manager.requestWhenInUseAuthorization()
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        self.status = status
-    }
-}
-
-class MotionPermissionManager: ObservableObject {
-    @Published var status: CMAuthorizationStatus = CMMotionActivityManager.authorizationStatus()
-    func request() {
-        let activityManager = CMMotionActivityManager()
-        activityManager.queryActivityStarting(from: Date(), to: Date(), to: .main) { _, _ in
-            DispatchQueue.main.async {
-                self.status = CMMotionActivityManager.authorizationStatus()
-            }
-        }
-    }
-}
-
-class MicrophonePermissionManager: ObservableObject {
-    @Published var status: AVAudioSession.RecordPermission = AVAudioSession.sharedInstance().recordPermission
-    func request() {
-        AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            DispatchQueue.main.async {
-                self.status = AVAudioSession.sharedInstance().recordPermission
-            }
-        }
-    }
-}
-
-// MARK: - Vehicle Model
-struct Vehicle: Identifiable, Codable, Equatable {
-    let id: String
-    var name: String
-    var cityMPG: Double
-    var highwayMPG: Double
-    var fuelTankCapacity: Double
-    
-    init(id: String = UUID().uuidString, name: String, cityMPG: Double, highwayMPG: Double, fuelTankCapacity: Double = 15.0) {
-        self.id = id
-        self.name = name
-        self.cityMPG = cityMPG
-        self.highwayMPG = highwayMPG
-        self.fuelTankCapacity = fuelTankCapacity
-    }
-}
+// MARK: - Main Settings View (Simplified Navigation Hub)
 
 struct SettingsView: View {
     @EnvironmentObject var tripManager: TripManager
     @AppStorage("userFirstName") private var userFirstName: String = ""
-    @AppStorage("appDarkMode") private var appDarkMode: Bool = false
-    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
-    @AppStorage("useKilometers") private var useKilometers: Bool = false
-    @AppStorage("selectedMapStyle") private var selectedMapStyle: Int = 0
-    @AppStorage("navigationVoiceIdentifier") private var navigationVoiceIdentifier: String = ""
-    @AppStorage("muteSpokenNavigation") private var muteSpokenNavigation: Bool = false
-    @AppStorage("showTrafficOnMap") private var showTrafficOnMap: Bool = true
-    @AppStorage("enableSpeedTracking") private var enableSpeedTracking: Bool = false
-
-    @AppStorage("defaultTripCategory") private var defaultTripCategory: String = "Business"
-    @AppStorage("tripCategories") private var tripCategoriesData: String = ""
-    @AppStorage("autoTripDetectionEnabled") private var autoTripDetectionEnabled: Bool = false
-    @AppStorage("autoTripSpeedThresholdMPH") private var autoTripSpeedThresholdMPH: Double = 20.0
-    @AppStorage("autoTripEndDelaySecs") private var autoTripEndDelaySecs: Double = 180.0
-    
-    @AppStorage("tripLogProtectionEnabled") private var tripLogProtectionEnabled: Bool = false
-    @AppStorage("tripLogProtectionMethod") private var tripLogProtectionMethod: String = "biometric"
-    
-    @AppStorage("cityMPG") private var cityMPG: Double = 25.0
-    @AppStorage("highwayMPG") private var highwayMPG: Double = 32.0
-    @AppStorage("gasPricePerGallon") private var gasPricePerGallon: Double = 3.99
-    
-    // NEW: Enhanced Settings
-    @AppStorage("minimumTripDistance") private var minimumTripDistance: Double = 0.5
-    @AppStorage("autoDeleteTripsAfterDays") private var autoDeleteTripsAfterDays: Int = 0
-    @AppStorage("speedLimitWarningEnabled") private var speedLimitWarningEnabled: Bool = false
-    @AppStorage("speedLimitThreshold") private var speedLimitThreshold: Double = 75.0
-    @AppStorage("showPOIOnMap") private var showPOIOnMap: Bool = true
-    @AppStorage("show3DBuildings") private var show3DBuildings: Bool = true
-    @AppStorage("showMapCompass") private var showMapCompass: Bool = true
-    @AppStorage("showMapScale") private var showMapScale: Bool = false
-    @AppStorage("batterySavingMode") private var batterySavingMode: Bool = false
-    @AppStorage("gpsAccuracyMeters") private var gpsAccuracyMeters: Double = 10.0
-    @AppStorage("selectedVehicleID") private var selectedVehicleID: String = ""
-    @AppStorage("savedVehiclesData") private var savedVehiclesData: String = ""
-    @AppStorage("blurHomeLocation") private var blurHomeLocation: Bool = false
-    @AppStorage("blurWorkLocation") private var blurWorkLocation: Bool = false
-    @AppStorage("useIRSMileageRate") private var useIRSMileageRate: Bool = false
-    @AppStorage("customReimbursementRate") private var customReimbursementRate: Double = 0.67
-    @AppStorage("fontSizeMultiplier") private var fontSizeMultiplier: Double = 1.0
-    @AppStorage("accentColorName") private var accentColorName: String = "blue"
-
-    private let fixedCategories = ["Other"]
-    private let defaultCategories = ["Business", "Personal", "Vacation", "Photography", "DoorDash", "Uber"]
-
-    private var categories: [String] {
-        let decoded = (try? JSONDecoder().decode([String].self, from: Data(tripCategoriesData.utf8))) ?? []
-        var unique = Array(Set(decoded))
-        if !unique.contains("Other") {
-            unique.append("Other")
-        }
-        unique = unique.filter { $0 != "Other" }.sorted() + ["Other"]
-        return unique
-    }
-
-    private func saveCategories(_ newCategories: [String]) {
-        var all = Array(Set(newCategories))
-        if !all.contains("Other") {
-            all.append("Other")
-        }
-        all = all.filter { $0 != "Other" }.sorted() + ["Other"]
-        if let data = try? JSONEncoder().encode(all) {
-            tripCategoriesData = String(data: data, encoding: .utf8) ?? tripCategoriesData
-        }
-    }
-    
-    // Vehicle Management
-    private var vehicles: [Vehicle] {
-        let trimmed = savedVehiclesData.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
-        let data = Data(trimmed.utf8)
-        guard let decoded = try? JSONDecoder().decode([Vehicle].self, from: data) else {
-            return []
-        }
-        return decoded
-    }
-    
-    private func saveVehicles(_ vehicles: [Vehicle]) {
-        if let data = try? JSONEncoder().encode(vehicles),
-           let str = String(data: data, encoding: .utf8) {
-            savedVehiclesData = str
-        }
-    }
-    
-    private var selectedVehicle: Vehicle? {
-        vehicles.first { $0.id == selectedVehicleID }
-    }
-
-    @State private var newCategory = ""
-    @State private var editingCategory: String? = nil
-    @State private var renameValue: String = ""
-    @State private var showJamesDrozImage = false
-    @State private var showWhatsNew = false
-
-    @StateObject private var locationPermission = LocationPermissionManager()
-    @StateObject private var motionPermission = MotionPermissionManager()
-    @StateObject private var microphonePermission = MicrophonePermissionManager()
-    @StateObject private var searchCompleter = AddressSearchCompleter()
-
+    @AppStorage("hasPremium") private var hasPremium: Bool = false
     
     @State private var showAbout = false
     @State private var showContact = false
-    @State private var searchText = ""
-    @State private var showingSearchResults = false
-    
-    @State private var newFavoriteName = ""
-    @State private var newFavoriteAddress = ""
-    @State private var addressSuggestions: [MKLocalSearchCompletion] = []
-    @State private var debounceWorkItem: DispatchWorkItem? = nil
-    @State private var showSuggestions: Bool = false
-    @State private var selectedSuggestion: MKLocalSearchCompletion? = nil
-    
-    @State private var speechSynthesizer = AVSpeechSynthesizer()
-    @State private var showVoiceOptions = false
-    @State private var showVoiceDownloadInfo = false
-    
-    @State private var showCategoryManager = false
-    @State private var showVehicleManager = false
-    @State private var showDataManagement = false
-    @State private var showPrivacySettings = false
-    
-    @State private var notificationPermissionStatus: UNAuthorizationStatus = .notDetermined
-
+    @State private var showWhatsNew = false
     @State private var showBypassSheet = false
-    @State private var bypassCodeInput = ""
-    @State private var bypassErrorMessage: String? = nil
-
-    @State private var showLogLockAuthError = false
-    @State private var logLockAuthErrorMessage = ""
-    
-    @State private var showingResetAlert = false
-    @State private var showBackgroundSheet = false
-    
-    @State private var expandedSections: Set<String> = []
+    @State private var showJamesDrozImage = false
     @State private var showOnboardingDebug = false
     @State private var showTutorialDebug = false
     @State private var showTutorial: Bool = false
-
+    
     private var appVersion: String {
         let dict = Bundle.main.infoDictionary
         let version = dict?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -223,70 +31,82 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
     
-    private var totalStorageUsed: Int64 {
-        StorageCalculator.calculateTripStorageSize(trips: tripManager.trips)
-    }
-
-    private var storageBreakdown: StorageBreakdown {
-        StorageCalculator.storageBreakdown(trips: tripManager.trips)
-    }
-
-    private var formattedStorageSize: String {
-        StorageCalculator.formatBytes(totalStorageUsed)
-    }
-    
-    private func updateNotificationPermissionStatus() {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                self.notificationPermissionStatus = settings.authorizationStatus
-            }
-        }
-    }
-
     var body: some View {
         BackgroundWrapper {
             NavigationView {
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 20) {
+                        profileHeader
                         
-                        // Quick Actions
-                        quickActionsCard
+                        VStack(spacing: 12) {
+                            NavigationLink(destination: TripSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "car.fill",
+                                    title: "Trip & Tracking",
+                                    subtitle: "Auto-detection, categories, tracking",
+                                    color: .blue
+                                )
+                            }
+                            
+                            NavigationLink(destination: VehicleSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "fuelpump.fill",
+                                    title: "Vehicle & Fuel",
+                                    subtitle: "Vehicles, MPG, fuel prices",
+                                    color: .orange
+                                )
+                            }
+                            
+                            NavigationLink(destination: MapNavigationSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "map.fill",
+                                    title: "Map & Navigation",
+                                    subtitle: "Map style, voice, speed warnings",
+                                    color: .green
+                                )
+                            }
+                            
+                            NavigationLink(destination: AppearanceSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "paintbrush.fill",
+                                    title: "Appearance",
+                                    subtitle: "Theme, units, text size",
+                                    color: .purple
+                                )
+                            }
+                            
+                            NavigationLink(destination: PrivacySecuritySettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "lock.shield.fill",
+                                    title: "Privacy & Security",
+                                    subtitle: "Permissions, trip log protection",
+                                    color: .red
+                                )
+                            }
+                            
+                            NavigationLink(destination: DataStorageSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "externaldrive.fill",
+                                    title: "Data & Storage",
+                                    subtitle: "Export, backup, manage storage",
+                                    color: .cyan,
+                                    badge: "\(tripManager.trips.count)"
+                                )
+                            }
+                            
+                            NavigationLink(destination: PerformanceSettingsView()) {
+                                SettingsGroupCard(
+                                    icon: "bolt.fill",
+                                    title: "Performance",
+                                    subtitle: "Battery, GPS accuracy",
+                                    color: .yellow
+                                )
+                            }
+                        }
                         
-                        // Profile Section
-                        profileCard
+                        quickActionsSection
                         
-                        // Trip Management
-                        tripManagementCard
-                        
-                        // Appearance & Display
-                        appearanceCard
-                        
-                        // Map Settings
-                        mapSettingsCard
-                        
-                        // Navigation & Voice
-                        navigationCard
-                        
-                        // Vehicle & Fuel
-                        vehicleCard
-                        
-                        // Privacy & Security
-                        privacyCard
-                        
-                        // Performance
-                        performanceCard
-                        
-                        // Data Management
-                        dataManagementCard
-                        
-                        // Storage Usage
-                        storageUsageCard
-                        
-                        // About & Support
-                        aboutCard
-                        
-                        // Danger Zone
-                        dangerZoneCard
+                        aboutSection
                     }
                     .padding()
                 }
@@ -296,12 +116,6 @@ struct SettingsView: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .navigationBarTrailing) {
                         Menu {
-                            Button(action: { showAbout = true }) {
-                                Label("About", systemImage: "info.circle")
-                            }
-                            Button(action: { showContact = true }) {
-                                Label("Contact", systemImage: "envelope")
-                            }
                             Button(action: { showWhatsNew = true }) {
                                 Label("What's New", systemImage: "sparkles")
                             }
@@ -323,32 +137,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .onReceive(searchCompleter.$suggestions) { suggestions in
-                    addressSuggestions = suggestions
-                }
-                .onAppear {
-                    updateNotificationPermissionStatus()
-                    initializeDefaultVehicleIfNeeded()
-                }
-                .sheet(isPresented: $showVoiceOptions) {
-                    VoiceOptionsView()
-                }
-                .sheet(isPresented: $showVoiceDownloadInfo) {
-                    VoiceDownloadInfoView()
-                }
-                .sheet(isPresented: $showCategoryManager) {
-                    CategoryManagerView()
-                }
-                .sheet(isPresented: $showVehicleManager) {
-                    VehicleManagerView(vehicles: vehicles, selectedVehicleID: $selectedVehicleID, onSave: saveVehicles)
-                }
-                .sheet(isPresented: $showDataManagement) {
-                    DataManagementView()
-                        .environmentObject(tripManager)
-                }
-                .sheet(isPresented: $showPrivacySettings) {
-                    PrivacySettingsView()
-                }
                 .sheet(isPresented: $showBypassSheet) {
                     BypassCodeView(isPresented: $showBypassSheet, showJamesDrozImage: $showJamesDrozImage)
                 }
@@ -356,45 +144,78 @@ struct SettingsView: View {
                     JamesDrozImageView()
                 }
                 .sheet(isPresented: $showWhatsNew) {
-                    WhatsNewView(
-                        currentVersion: appVersion,
-                        onDismiss: { showWhatsNew = false }
-                    )
+                    WhatsNewView(currentVersion: appVersion, onDismiss: { showWhatsNew = false })
                 }
                 .sheet(isPresented: $showOnboardingDebug) {
-                    OnboardingView(
-                        onDismiss: { showOnboardingDebug = false },
-                        showTutorial: $showTutorial
-                    )
+                    OnboardingView(onDismiss: { showOnboardingDebug = false }, showTutorial: $showTutorial)
                 }
                 .sheet(isPresented: $showTutorialDebug) {
                     TutorialScreenPage()
                 }
-            }
-            .sheet(isPresented: $showAbout) {
-                InfoView()
-            }
-            .sheet(isPresented: $showContact) {
-                ContactInfoView()
-            }
-            .sheet(isPresented: $showBackgroundSheet) {
-                BackgroundView()
-            }
-            .alert("Reset App to Stock Settings", isPresented: $showingResetAlert) {
-                Button("Cancel", role: .cancel) {}
-                Button("Reset", role: .destructive) {
-                    resetAppToStockSettings()
+                .sheet(isPresented: $showAbout) {
+                    InfoView()
                 }
-            } message: {
-                Text("Are you sure you want to reset the app? This will clear all your settings and saved data.")
+                .sheet(isPresented: $showContact) {
+                    ContactInfoView()
+                }
             }
         }
     }
     
-    // MARK: - Card Views
+    private var profileHeader: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(
+                        colors: [.blue, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+                    .frame(width: 60, height: 60)
+                
+                Text(userFirstName.prefix(1).uppercased())
+                    .font(.title.bold())
+                    .foregroundColor(.white)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(userFirstName.isEmpty ? "Welcome" : "Hi, \(userFirstName)!")
+                    .font(.title2.bold())
+                
+                HStack(spacing: 4) {
+                    Image(systemName: hasPremium ? "crown.fill" : "car.fill")
+                        .font(.caption)
+                    Text(hasPremium ? "Premium Member" : "Free Version")
+                        .font(.subheadline)
+                }
+                .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            NavigationLink(destination: ProfileSettingsView()) {
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
     
-    private var quickActionsCard: some View {
-        SettingsCard(icon: "bolt.fill", title: "Quick Actions", iconColor: .orange) {
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick Actions")
+                .font(.headline)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
+            
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                 QuickActionButton(icon: "square.and.arrow.up.on.square", title: "Export GPX", action: exportTripData)
                 QuickActionButton(icon: "square.and.arrow.up", title: "Share App", action: shareApp)
@@ -403,34 +224,211 @@ struct SettingsView: View {
         }
     }
     
-    private var profileCard: some View {
-        SettingsCard(icon: "person.fill", title: "Profile", iconColor: .blue) {
-            VStack(spacing: 16) {
+    private var aboutSection: some View {
+        VStack(spacing: 12) {
+            Button(action: { showAbout = true }) {
+                HStack {
+                    Label("About Waylon", systemImage: "info.circle")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Button(action: { showContact = true }) {
+                HStack {
+                    Label("Contact Support", systemImage: "envelope")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Text("Version \(appVersion)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
+        }
+    }
+    
+    private func exportTripData() {
+        let gpxString = generateGPX()
+        shareContent(gpxString, filename: "waylon_trips_\(Date().ISO8601Format()).gpx")
+    }
+    
+    private func generateGPX() -> String {
+        var gpx = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <gpx version="1.1" creator="WaylonApp">
+        """
+        for trip in tripManager.trips {
+            gpx += "<trk><trkseg>"
+            for point in trip.routeCoordinates {
+                gpx += "<trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\"></trkpt>"
+            }
+            gpx += "</trkseg></trk>"
+        }
+        gpx += "</gpx>"
+        return gpx
+    }
+    
+    private func shareContent(_ content: String, filename: String) {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
+        
+        let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true)
+        }
+    }
+    
+    private func shareApp() {
+        let activityVC = UIActivityViewController(
+            activityItems: ["Check out Waylon - the best trip tracking app!"],
+            applicationActivities: nil
+        )
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true)
+        }
+    }
+    
+    private func clearCache() {
+        URLCache.shared.removeAllCachedResponses()
+    }
+}
+
+// MARK: - Settings Group Card Component
+
+struct SettingsGroupCard: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let color: Color
+    var badge: String? = nil
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(color.opacity(0.15))
+                    .frame(width: 50, height: 50)
+                
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundColor(color)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            if let badge = badge {
+                Text(badge)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color.opacity(0.2))
+                    .cornerRadius(8)
+            }
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Profile Settings View
+
+struct ProfileSettingsView: View {
+    @EnvironmentObject var tripManager: TripManager
+    @AppStorage("userFirstName") private var userFirstName: String = ""
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Personal Information")) {
                 HStack {
                     Text("First Name")
                     Spacer()
                     TextField("Your name", text: $userFirstName)
                         .multilineTextAlignment(.trailing)
                 }
-                
+            }
+            
+            Section(header: Text("Favorite Places")) {
                 NavigationLink(destination: FavoriteAddressesView()) {
                     HStack {
                         Label("Favorite Addresses", systemImage: "mappin.and.ellipse")
                         Spacer()
                         Text("\(tripManager.favoriteAddresses.count)")
                             .foregroundColor(.secondary)
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
                     }
                 }
             }
         }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Trip Settings View
+
+struct TripSettingsView: View {
+    @AppStorage("defaultTripCategory") private var defaultTripCategory: String = "Business"
+    @AppStorage("tripCategories") private var tripCategoriesData: String = ""
+    @AppStorage("autoTripDetectionEnabled") private var autoTripDetectionEnabled: Bool = false
+    @AppStorage("autoTripSpeedThresholdMPH") private var autoTripSpeedThresholdMPH: Double = 20.0
+    @AppStorage("autoTripEndDelaySecs") private var autoTripEndDelaySecs: Double = 180.0
+    @AppStorage("minimumTripDistance") private var minimumTripDistance: Double = 0.5
+    @AppStorage("useKilometers") private var useKilometers: Bool = false
+    
+    @State private var showCategoryManager = false
+    
+    private var categories: [String] {
+        let decoded = (try? JSONDecoder().decode([String].self, from: Data(tripCategoriesData.utf8))) ?? []
+        var unique = Array(Set(decoded))
+        if !unique.contains("Other") {
+            unique.append("Other")
+        }
+        return unique.filter { $0 != "Other" }.sorted() + ["Other"]
     }
     
-    private var tripManagementCard: some View {
-        SettingsCard(icon: "car.fill", title: "Trip Management", iconColor: .green) {
-            VStack(spacing: 16) {
+    var body: some View {
+        Form {
+            Section(header: Text("Categories")) {
                 HStack {
                     Text("Default Category")
                     Spacer()
@@ -451,12 +449,12 @@ struct SettingsView: View {
                             .font(.caption)
                     }
                 }
-                
-                Divider()
-                
+            }
+            
+            Section(header: Text("Auto Trip Detection")) {
                 Toggle(isOn: $autoTripDetectionEnabled) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Auto Trip Detection")
+                        Text("Auto Detection")
                         Text("Start trips automatically")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -464,162 +462,94 @@ struct SettingsView: View {
                 }
                 
                 if autoTripDetectionEnabled {
-                    VStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Start Speed")
-                                Spacer()
-                                Text("\(Int(autoTripSpeedThresholdMPH)) mph")
-                                    .foregroundColor(.secondary)
-                            }
-                            Slider(value: $autoTripSpeedThresholdMPH, in: 5...50, step: 1)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Min Trip Distance")
-                                Spacer()
-                                Text(String(format: "%.1f %@", minimumTripDistance, useKilometers ? "km" : "mi"))
-                                    .foregroundColor(.secondary)
-                            }
-                            Slider(value: $minimumTripDistance, in: 0...5, step: 0.1)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("End Delay")
-                                Spacer()
-                                Text("\(Int(autoTripEndDelaySecs/60)) min")
-                                    .foregroundColor(.secondary)
-                            }
-                            Slider(value: $autoTripEndDelaySecs, in: 30...600, step: 30)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var appearanceCard: some View {
-        SettingsCard(icon: "paintbrush.fill", title: "Appearance", iconColor: .purple) {
-            VStack(spacing: 16) {
-                Toggle(isOn: $appDarkMode) {
-                    Label("Dark Mode", systemImage: "moon.fill")
-                }
-                
-                Toggle(isOn: $useKilometers) {
-                    Label("Use Kilometers", systemImage: "speedometer")
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Text Size")
-                        Spacer()
-                        Text("\(Int(fontSizeMultiplier * 100))%")
-                            .foregroundColor(.secondary)
-                    }
-                    Slider(value: $fontSizeMultiplier, in: 0.8...1.4, step: 0.1)
-                }
-            }
-        }
-    }
-    
-    private var mapSettingsCard: some View {
-        SettingsCard(icon: "map.fill", title: "Map Settings", iconColor: .cyan) {
-            VStack(spacing: 16) {
-                HStack {
-                    Text("Map Style")
-                    Spacer()
-                    Picker("", selection: $selectedMapStyle) {
-                        Text("Standard").tag(0)
-                        Text("Satellite").tag(1)
-                        Text("Hybrid").tag(2)
-                        Text("Muted").tag(3)
-                    }
-                    .pickerStyle(.menu)
-                }
-                
-                Toggle(isOn: $showTrafficOnMap) {
-                    Label("Show Traffic", systemImage: "car.2.fill")
-                }
-                
-                Toggle(isOn: $showPOIOnMap) {
-                    Label("Points of Interest", systemImage: "mappin.circle.fill")
-                }
-                
-                Toggle(isOn: $show3DBuildings) {
-                    Label("3D Buildings", systemImage: "building.2.fill")
-                }
-                
-                Toggle(isOn: $showMapCompass) {
-                    Label("Compass", systemImage: "location.north.fill")
-                }
-                
-                Toggle(isOn: $showMapScale) {
-                    Label("Scale Bar", systemImage: "ruler.fill")
-                }
-            }
-        }
-    }
-    
-    private var navigationCard: some View {
-        SettingsCard(icon: "speaker.wave.3.fill", title: "Navigation & Voice", iconColor: .indigo) {
-            VStack(spacing: 16) {
-                Toggle(isOn: $muteSpokenNavigation) {
-                    Label("Mute Navigation", systemImage: "speaker.slash.fill")
-                }
-                
-                Button(action: { showVoiceOptions = true }) {
-                    HStack {
-                        Label("Voice Settings", systemImage: "waveform")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                
-                Toggle(isOn: $speedLimitWarningEnabled) {
-                    Label("Speed Warnings", systemImage: "exclamationmark.triangle.fill")
-                }
-                
-                if speedLimitWarningEnabled {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("Warning Threshold")
+                            Text("Start Speed")
                             Spacer()
-                            Text("\(Int(speedLimitThreshold)) mph")
+                            Text("\(Int(autoTripSpeedThresholdMPH)) mph")
                                 .foregroundColor(.secondary)
                         }
-                        Slider(value: $speedLimitThreshold, in: 35...85, step: 5)
+                        Slider(value: $autoTripSpeedThresholdMPH, in: 5...50, step: 1)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Min Trip Distance")
+                            Spacer()
+                            Text(String(format: "%.1f %@", minimumTripDistance, useKilometers ? "km" : "mi"))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $minimumTripDistance, in: 0...5, step: 0.1)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("End Delay")
+                            Spacer()
+                            Text("\(Int(autoTripEndDelaySecs/60)) min")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $autoTripEndDelaySecs, in: 30...600, step: 30)
                     }
                 }
             }
+            
+            Section(footer: Text("Auto trip detection uses GPS and motion sensors to automatically start and stop tracking when you drive.")) {
+                EmptyView()
+            }
+        }
+        .navigationTitle("Trip & Tracking")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showCategoryManager) {
+            CategoryManagerView()
+        }
+    }
+}
+
+// MARK: - Vehicle Settings View
+
+struct VehicleSettingsView: View {
+    @AppStorage("cityMPG") private var cityMPG: Double = 25.0
+    @AppStorage("highwayMPG") private var highwayMPG: Double = 32.0
+    @AppStorage("gasPricePerGallon") private var gasPricePerGallon: Double = 3.99
+    @AppStorage("selectedVehicleID") private var selectedVehicleID: String = ""
+    @AppStorage("savedVehiclesData") private var savedVehiclesData: String = ""
+    @AppStorage("useIRSMileageRate") private var useIRSMileageRate: Bool = false
+    @AppStorage("customReimbursementRate") private var customReimbursementRate: Double = 0.67
+    
+    @State private var showVehicleManager = false
+    
+    private var vehicles: [Vehicle] {
+        let trimmed = savedVehiclesData.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return (try? JSONDecoder().decode([Vehicle].self, from: Data(trimmed.utf8))) ?? []
+    }
+    
+    private var selectedVehicle: Vehicle? {
+        vehicles.first { $0.id == selectedVehicleID }
+    }
+    
+    private func saveVehicles(_ vehicles: [Vehicle]) {
+        if let data = try? JSONEncoder().encode(vehicles),
+           let str = String(data: data, encoding: .utf8) {
+            savedVehiclesData = str
         }
     }
     
-    private var vehicleCard: some View {
-        SettingsCard(icon: "fuelpump.fill", title: "Vehicle & Fuel", iconColor: .orange) {
-            VStack(spacing: 16) {
+    var body: some View {
+        Form {
+            Section(header: Text("Current Vehicle")) {
                 if let vehicle = selectedVehicle {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(vehicle.name).font(.headline)
-                            HStack(spacing: 12) {
-                                Label("\(Int(vehicle.cityMPG)) city", systemImage: "building.2.fill")
-                                    .font(.caption)
-                                Label("\(Int(vehicle.highwayMPG)) hwy", systemImage: "road.lanes")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(vehicle.name).font(.headline)
+                        HStack(spacing: 16) {
+                            Label("\(Int(vehicle.cityMPG)) city", systemImage: "building.2.fill")
+                                .font(.caption)
+                            Label("\(Int(vehicle.highwayMPG)) hwy", systemImage: "road.lanes")
+                                .font(.caption)
                         }
-                        Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
+                        .foregroundColor(.secondary)
                     }
-                    .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(8)
                 } else {
                     Text("No vehicle selected")
                         .foregroundColor(.secondary)
@@ -636,9 +566,9 @@ struct SettingsView: View {
                             .font(.caption)
                     }
                 }
-                
-                Divider()
-                
+            }
+            
+            Section(header: Text("Fuel Costs")) {
                 HStack {
                     Text("Gas Price")
                     Spacer()
@@ -650,7 +580,9 @@ struct SettingsView: View {
                     Text("/gal")
                         .foregroundColor(.secondary)
                 }
-                
+            }
+            
+            Section(header: Text("Reimbursement")) {
                 Toggle(isOn: $useIRSMileageRate) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Use IRS Mileage Rate")
@@ -661,11 +593,138 @@ struct SettingsView: View {
                 }
             }
         }
+        .navigationTitle("Vehicle & Fuel")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showVehicleManager) {
+            VehicleManagerView(vehicles: vehicles, selectedVehicleID: $selectedVehicleID, onSave: saveVehicles)
+        }
     }
+}
+
+// MARK: - Map & Navigation Settings View
+
+struct MapNavigationSettingsView: View {
+    @AppStorage("selectedMapStyle") private var selectedMapStyle: Int = 0
+    @AppStorage("showTrafficOnMap") private var showTrafficOnMap: Bool = true
+    @AppStorage("showPOIOnMap") private var showPOIOnMap: Bool = true
+    @AppStorage("show3DBuildings") private var show3DBuildings: Bool = true
+    @AppStorage("showMapCompass") private var showMapCompass: Bool = true
+    @AppStorage("showMapScale") private var showMapScale: Bool = false
+    @AppStorage("muteSpokenNavigation") private var muteSpokenNavigation: Bool = false
+    @AppStorage("speedLimitWarningEnabled") private var speedLimitWarningEnabled: Bool = false
+    @AppStorage("speedLimitThreshold") private var speedLimitThreshold: Double = 75.0
     
-    private var privacyCard: some View {
-        SettingsCard(icon: "lock.shield.fill", title: "Privacy & Security", iconColor: .red) {
-            VStack(spacing: 16) {
+    @State private var showVoiceOptions = false
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Map Display")) {
+                Picker("Map Style", selection: $selectedMapStyle) {
+                    Text("Standard").tag(0)
+                    Text("Satellite").tag(1)
+                    Text("Hybrid").tag(2)
+                    Text("Muted").tag(3)
+                }
+                
+                Toggle("Show Traffic", isOn: $showTrafficOnMap)
+                Toggle("Points of Interest", isOn: $showPOIOnMap)
+                Toggle("3D Buildings", isOn: $show3DBuildings)
+                Toggle("Compass", isOn: $showMapCompass)
+                Toggle("Scale Bar", isOn: $showMapScale)
+            }
+            
+            Section(header: Text("Navigation Voice")) {
+                Toggle("Mute Navigation", isOn: $muteSpokenNavigation)
+                
+                Button(action: { showVoiceOptions = true }) {
+                    HStack {
+                        Label("Voice Settings", systemImage: "waveform")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                }
+            }
+            
+            Section(header: Text("Speed Warnings")) {
+                Toggle("Speed Warnings", isOn: $speedLimitWarningEnabled)
+                
+                if speedLimitWarningEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Warning Threshold")
+                            Spacer()
+                            Text("\(Int(speedLimitThreshold)) mph")
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $speedLimitThreshold, in: 35...85, step: 5)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Map & Navigation")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showVoiceOptions) {
+            VoiceOptionsView()
+        }
+    }
+}
+
+// MARK: - Appearance Settings View
+
+struct AppearanceSettingsView: View {
+    @AppStorage("appDarkMode") private var appDarkMode: Bool = false
+    @AppStorage("useKilometers") private var useKilometers: Bool = false
+    @AppStorage("fontSizeMultiplier") private var fontSizeMultiplier: Double = 1.0
+    @AppStorage("accentColorName") private var accentColorName: String = "blue"
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Theme")) {
+                Toggle("Dark Mode", isOn: $appDarkMode)
+            }
+            
+            Section(header: Text("Units")) {
+                Toggle("Use Kilometers", isOn: $useKilometers)
+            }
+            
+            Section(header: Text("Text Size")) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Size")
+                        Spacer()
+                        Text("\(Int(fontSizeMultiplier * 100))%")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $fontSizeMultiplier, in: 0.8...1.4, step: 0.1)
+                    
+                    Text("Preview: The quick brown fox")
+                        .font(.system(size: 16 * fontSizeMultiplier))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Privacy & Security Settings View
+
+struct PrivacySecuritySettingsView: View {
+    @AppStorage("tripLogProtectionEnabled") private var tripLogProtectionEnabled: Bool = false
+    @AppStorage("tripLogProtectionMethod") private var tripLogProtectionMethod: String = "biometric"
+    @AppStorage("blurHomeLocation") private var blurHomeLocation: Bool = false
+    @AppStorage("blurWorkLocation") private var blurWorkLocation: Bool = false
+    
+    @State private var showPrivacySettings = false
+    @State private var showLogLockAuthError = false
+    @State private var logLockAuthErrorMessage = ""
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Trip Log Protection")) {
                 Toggle(isOn: Binding<Bool>(
                     get: { tripLogProtectionEnabled },
                     set: { newValue in
@@ -677,8 +736,8 @@ struct SettingsView: View {
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Trip Log Protection")
-                        Text("Require authentication")
+                        Text("Require Authentication")
+                        Text("Protect your trip history")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -691,32 +750,17 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                
-                Divider()
-                
-                Toggle(isOn: $blurHomeLocation) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Blur Home Location")
-                        Text("In exports and shares")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Toggle(isOn: $blurWorkLocation) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Blur Work Location")
-                        Text("In exports and shares")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Divider()
-                
+            }
+            
+            Section(header: Text("Location Privacy")) {
+                Toggle("Blur Home Location", isOn: $blurHomeLocation)
+                Toggle("Blur Work Location", isOn: $blurWorkLocation)
+            }
+            
+            Section(header: Text("Permissions")) {
                 Button(action: { showPrivacySettings = true }) {
                     HStack {
-                        Label("Permissions", systemImage: "hand.raised.fill")
+                        Label("Manage Permissions", systemImage: "hand.raised.fill")
                         Spacer()
                         Image(systemName: "chevron.right")
                             .foregroundColor(.secondary)
@@ -725,11 +769,328 @@ struct SettingsView: View {
                 }
             }
         }
+        .navigationTitle("Privacy & Security")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showPrivacySettings) {
+            PrivacySettingsView()
+        }
+        .alert("Authentication Error", isPresented: $showLogLockAuthError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(logLockAuthErrorMessage)
+        }
     }
     
-    private var performanceCard: some View {
-        SettingsCard(icon: "battery.100.bolt", title: "Performance", iconColor: .green) {
-            VStack(spacing: 16) {
+    private func authenticateBeforeDisablingLogLock() {
+        let context = LAContext()
+        var error: NSError?
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Unlock to change settings") { success, evalError in
+                DispatchQueue.main.async {
+                    if success {
+                        tripLogProtectionEnabled = false
+                    } else {
+                        showLogLockAuthError = true
+                        logLockAuthErrorMessage = evalError?.localizedDescription ?? "Authentication failed."
+                    }
+                }
+            }
+        } else {
+            showLogLockAuthError = true
+            logLockAuthErrorMessage = "Biometric authentication not available."
+        }
+    }
+}
+
+// MARK: - Data & Storage Settings View
+
+struct DataStorageSettingsView: View {
+    @EnvironmentObject var tripManager: TripManager
+    @AppStorage("useKilometers") private var useKilometers: Bool = false
+    @AppStorage("autoDeleteTripsAfterDays") private var autoDeleteTripsAfterDays: Int = 0
+    
+    @State private var showExportSuccess = false
+    @State private var exportMessage = ""
+    @State private var showClearDataAlert = false
+    
+    private var totalStorageUsed: Int64 {
+        StorageCalculator.calculateTripStorageSize(trips: tripManager.trips)
+    }
+    
+    private var storageBreakdown: StorageBreakdown {
+        StorageCalculator.storageBreakdown(trips: tripManager.trips)
+    }
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Trip Statistics")) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Total Trips")
+                            .foregroundColor(.secondary)
+                        Text("\(tripManager.trips.count)")
+                            .font(.title2.bold())
+                    }
+                    Spacer()
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Total Distance")
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.1f %@",
+                                   tripManager.trips.reduce(0) { $0 + $1.distance },
+                                   useKilometers ? "km" : "mi"))
+                            .font(.title2.bold())
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            
+            Section(header: Text("Storage Usage")) {
+                HStack {
+                    Text("Total Storage")
+                    Spacer()
+                    Text(StorageCalculator.formatBytes(totalStorageUsed))
+                        .foregroundColor(.secondary)
+                        .bold()
+                }
+                
+                NavigationLink(destination: StorageBreakdownView()) {
+                    Label("View Storage Breakdown", systemImage: "chart.bar.fill")
+                }
+            }
+            
+            Section(header: Text("Export Data")) {
+                Button(action: exportAsCSV) {
+                    Label("Export as CSV", systemImage: "doc.text.fill")
+                }
+                Button(action: exportAsJSON) {
+                    Label("Backup Data (JSON)", systemImage: "doc.badge.arrow.up.fill")
+                }
+                Button(action: exportAsGPX) {
+                    Label("Export as GPX", systemImage: "location.fill")
+                }
+            }
+            
+            Section(header: Text("Auto-Delete")) {
+                Picker("Delete trips after", selection: $autoDeleteTripsAfterDays) {
+                    Text("Never").tag(0)
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                    Text("6 months").tag(180)
+                    Text("1 year").tag(365)
+                }
+                
+                if autoDeleteTripsAfterDays > 0 {
+                    Text("Trips older than \(autoDeleteTripsAfterDays) days will be automatically deleted")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+            
+            Section(header: Text("Danger Zone")) {
+                Button(action: { showClearDataAlert = true }) {
+                    Label("Delete All Trips", systemImage: "trash.fill")
+                        .foregroundColor(.red)
+                }
+            }
+        }
+        .navigationTitle("Data & Storage")
+        .navigationBarTitleDisplayMode(.inline)
+        .alert("Export Complete", isPresented: $showExportSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportMessage)
+        }
+        .alert("Delete All Trips?", isPresented: $showClearDataAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete All", role: .destructive) {
+                tripManager.trips.removeAll()
+            }
+        } message: {
+            Text("This will permanently delete all trips, audio notes, and photos. This action cannot be undone.")
+        }
+    }
+    
+    private func exportAsCSV() {
+        let csvString = generateTripCSV()
+        shareContent(csvString, filename: "waylon_trips_\(formattedDate()).csv")
+        exportMessage = "Trips exported as CSV"
+        showExportSuccess = true
+    }
+    
+    private func exportAsJSON() {
+        guard let jsonData = try? JSONEncoder().encode(tripManager.trips),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+        shareContent(jsonString, filename: "waylon_backup_\(formattedDate()).json")
+        exportMessage = "Backup created successfully"
+        showExportSuccess = true
+    }
+    
+    private func exportAsGPX() {
+        let gpxString = generateGPX()
+        shareContent(gpxString, filename: "waylon_trips_\(formattedDate()).gpx")
+        exportMessage = "Trips exported as GPX"
+        showExportSuccess = true
+    }
+    
+    private func generateTripCSV() -> String {
+        var csv = "Date,Distance,Category,Notes\n"
+        for trip in tripManager.trips {
+            let distance = String(format: "%.2f", trip.distance)
+            csv += "\"\(trip.startTime)\",\(distance),\"\",\"\"\n"
+        }
+        return csv
+    }
+    
+    private func generateGPX() -> String {
+        var gpx = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><gpx version=\"1.1\">"
+        for trip in tripManager.trips {
+            gpx += "<trk><trkseg>"
+            for point in trip.routeCoordinates {
+                gpx += "<trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\"></trkpt>"
+            }
+            gpx += "</trkseg></trk>"
+        }
+        gpx += "</gpx>"
+        return gpx
+    }
+    
+    private func shareContent(_ content: String, filename: String) {
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
+        
+        let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            window.rootViewController?.present(activityVC, animated: true)
+        }
+    }
+    
+    private func formattedDate() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+}
+
+// MARK: - Storage Breakdown View
+
+struct StorageBreakdownView: View {
+    @EnvironmentObject var tripManager: TripManager
+    
+    private var storageBreakdown: StorageBreakdown {
+        StorageCalculator.storageBreakdown(trips: tripManager.trips)
+    }
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Storage Breakdown")) {
+                StorageBreakdownRow(
+                    icon: "doc.text.fill",
+                    label: "Trip Data",
+                    size: storageBreakdown.tripData,
+                    total: storageBreakdown.total,
+                    color: .blue
+                )
+                
+                StorageBreakdownRow(
+                    icon: "waveform",
+                    label: "Audio Notes",
+                    size: storageBreakdown.audioFiles,
+                    total: storageBreakdown.total,
+                    color: .orange
+                )
+                
+                StorageBreakdownRow(
+                    icon: "photo.fill",
+                    label: "Photos",
+                    size: storageBreakdown.photoFiles,
+                    total: storageBreakdown.total,
+                    color: .purple
+                )
+                
+                StorageBreakdownRow(
+                    icon: "map.fill",
+                    label: "Route Data",
+                    size: storageBreakdown.routeData,
+                    total: storageBreakdown.total,
+                    color: .green
+                )
+            }
+            
+            Section(header: Text("Quick Stats")) {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 4) {
+                        Text("\(tripManager.trips.count)")
+                            .font(.headline)
+                        Text("Trips")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Divider()
+                        .frame(height: 30)
+                    Spacer()
+                    VStack(spacing: 4) {
+                        let audioCount = tripManager.trips.reduce(0) { $0 + $1.audioNotes.count }
+                        Text("\(audioCount)")
+                            .font(.headline)
+                        Text("Audio")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Divider()
+                        .frame(height: 30)
+                    Spacer()
+                    VStack(spacing: 4) {
+                        let photoCount = tripManager.trips.reduce(0) { $0 + $1.photoURLs.count }
+                        Text("\(photoCount)")
+                            .font(.headline)
+                        Text("Photos")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .navigationTitle("Storage Details")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Performance Settings View
+
+struct PerformanceSettingsView: View {
+    @AppStorage("batterySavingMode") private var batterySavingMode: Bool = false
+    @AppStorage("gpsAccuracyMeters") private var gpsAccuracyMeters: Double = 10.0
+    @AppStorage("enableSpeedTracking") private var enableSpeedTracking: Bool = false
+    
+    private var accuracyDescription: String {
+        switch gpsAccuracyMeters {
+        case 0..<15: return "Excellent (Best)"
+        case 15..<30: return "Very Good"
+        case 30..<50: return "Good"
+        case 50..<75: return "Fair"
+        default: return "Basic"
+        }
+    }
+    
+    private var accuracyColor: Color {
+        switch gpsAccuracyMeters {
+        case 0..<15: return .green
+        case 15..<30: return .blue
+        case 30..<50: return .yellow
+        case 50..<75: return .orange
+        default: return .red
+        }
+    }
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Battery & GPS")) {
                 Toggle(isOn: $batterySavingMode) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Battery Saving Mode")
@@ -738,16 +1099,9 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .onChange(of: batterySavingMode) { newValue in
-                    if newValue {
-                        // Show confirmation that battery saving is active
-                        let generator = UIImpactFeedbackGenerator(style: .medium)
-                        generator.impactOccurred()
-                    }
-                }
                 
                 if !batterySavingMode {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("GPS Accuracy")
                             Spacer()
@@ -757,701 +1111,51 @@ struct SettingsView: View {
                         }
                         
                         Slider(value: $gpsAccuracyMeters, in: 5...100, step: 5)
-                            .onChange(of: gpsAccuracyMeters) { newValue in
-                                // Provide haptic feedback when changing accuracy
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.impactOccurred()
-                            }
                         
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(accuracyDescription)
-                                    .font(.caption)
-                                    .foregroundColor(accuracyColor)
-                                    .bold()
-                                Text("Lower = more accurate, higher battery use")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: accuracyIcon)
+                            Text(accuracyDescription)
+                                .font(.caption)
                                 .foregroundColor(accuracyColor)
-                                .font(.title3)
+                                .bold()
+                            Spacer()
                         }
+                        
+                        Text("Lower = more accurate, higher battery use")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.top, 4)
                 } else {
-                    // Show info when battery saving is active
                     HStack(spacing: 8) {
                         Image(systemName: "info.circle.fill")
                             .foregroundColor(.orange)
-                        Text("GPS accuracy fixed at 100m to conserve battery")
+                        Text("GPS accuracy fixed at 100m")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(8)
                 }
-                
-                Divider()
-                
+            }
+            
+            Section(header: Text("Tracking Options")) {
                 Toggle(isOn: $enableSpeedTracking) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Speed Tracking")
-                        Text("Show speed data in trips")
+                        Text("Record speed data in trips")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
             }
-        }
-    }
-    
-    private var dataManagementCard: some View {
-        SettingsCard(icon: "externaldrive.fill", title: "Data Management", iconColor: .blue) {
-            VStack(spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Total Trips")
-                        Text("\(tripManager.trips.count)")
-                            .font(.title2)
-                            .bold()
-                    }
-                    Spacer()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Total Distance")
-                        Text(String(format: "%.1f %@", tripManager.trips.reduce(0) { $0 + $1.distance }, useKilometers ? "km" : "mi"))
-                            .font(.title2)
-                            .bold()
-                    }
-                }
-                .padding()
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(8)
-                
-                Button(action: exportAllTripsAsCSV) {
-                    Label("Export as CSV", systemImage: "doc.text.fill")
-                }
-                
-                Button(action: exportAllTripsAsJSON) {
-                    Label("Backup Data (JSON)", systemImage: "square.and.arrow.down.fill")
-                }
-                
-                Divider()
-                
-                HStack {
-                    Text("Auto-Delete Trips")
-                    Spacer()
-                    Picker("", selection: $autoDeleteTripsAfterDays) {
-                        Text("Never").tag(0)
-                        Text("30 days").tag(30)
-                        Text("90 days").tag(90)
-                        Text("1 year").tag(365)
-                    }
-                    .pickerStyle(.menu)
-                }
-            }
-        }
-    }
-    
-    private var storageUsageCard: some View {
-        SettingsCard(icon: "internaldrive.fill", title: "Storage Usage", iconColor: .orange) {
-            VStack(spacing: 16) {
-                // Total storage display
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Total Storage Used")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Text(formattedStorageSize)
-                            .font(.title.bold())
-                            .foregroundColor(.primary)
-                    }
-                    Spacer()
-                    Image(systemName: "externaldrive.fill")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange.opacity(0.5))
-                }
-                .padding()
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(12)
-                
-                Divider()
-                
-                // Storage breakdown
-                VStack(spacing: 12) {
-                    StorageBreakdownRow(
-                        icon: "doc.text.fill",
-                        label: "Trip Data",
-                        size: storageBreakdown.tripData,
-                        total: storageBreakdown.total,
-                        color: .blue
-                    )
-                    
-                    StorageBreakdownRow(
-                        icon: "waveform",
-                        label: "Audio Notes",
-                        size: storageBreakdown.audioFiles,
-                        total: storageBreakdown.total,
-                        color: .orange
-                    )
-                    
-                    StorageBreakdownRow(
-                        icon: "photo.fill",
-                        label: "Photos",
-                        size: storageBreakdown.photoFiles,
-                        total: storageBreakdown.total,
-                        color: .purple
-                    )
-                    
-                    StorageBreakdownRow(
-                        icon: "map.fill",
-                        label: "Route Data",
-                        size: storageBreakdown.routeData,
-                        total: storageBreakdown.total,
-                        color: .green
-                    )
-                }
-                
-                // Quick stats
-                HStack(spacing: 20) {
-                    VStack(spacing: 4) {
-                        Text("\(tripManager.trips.count)")
-                            .font(.headline)
-                        Text("Trips")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    Divider()
-                        .frame(height: 30)
-                    
-                    VStack(spacing: 4) {
-                        let audioCount = tripManager.trips.reduce(0) { $0 + $1.audioNotes.count }
-                        Text("\(audioCount)")
-                            .font(.headline)
-                        Text("Audio")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    Divider()
-                        .frame(height: 30)
-                    
-                    VStack(spacing: 4) {
-                        let photoCount = tripManager.trips.reduce(0) { $0 + $1.photoURLs.count }
-                        Text("\(photoCount)")
-                            .font(.headline)
-                        Text("Photos")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .padding(.top, 8)
-                
-                // Clear data button
-                Button(action: clearAllTripData) {
-                    HStack {
-                        Label("Clear All Trip Data", systemImage: "trash.fill")
-                            .foregroundColor(.red)
-                        Spacer()
-                    }
-                }
-            }
-        }
-    }
-    
-    private var aboutCard: some View {
-        SettingsCard(icon: "info.circle.fill", title: "About & Support", iconColor: .gray) {
-            VStack(spacing: 16) {
-                Button(action: { showAbout = true }) {
-                    HStack {
-                        Label("About", systemImage: "info.circle")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                
-                Button(action: { showContact = true }) {
-                    HStack {
-                        Label("Contact", systemImage: "envelope")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                
-                Button(action: { showWhatsNew = true }) {
-                    HStack {
-                        Label("What's New", systemImage: "sparkles")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                
-                HStack {
-                    Text("Version")
-                    Spacer()
-                    Text(appVersion)
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-    }
-    
-    private var dangerZoneCard: some View {
-        SettingsCard(icon: "exclamationmark.triangle.fill", title: "Danger Zone", iconColor: .red) {
-            Button(action: { showingResetAlert = true }) {
-                HStack {
-                    Label("Reset All Settings", systemImage: "arrow.counterclockwise.circle.fill")
-                        .foregroundColor(.red)
-                    Spacer()
-                }
-            }
-        }
-    }
-    
-    private var accuracyDescription: String {
-        switch gpsAccuracyMeters {
-        case 0..<15:
-            return "Excellent (Best)"
-        case 15..<30:
-            return "Very Good"
-        case 30..<50:
-            return "Good"
-        case 50..<75:
-            return "Fair"
-        default:
-            return "Basic"
-        }
-    }
-
-    private var accuracyColor: Color {
-        switch gpsAccuracyMeters {
-        case 0..<15:
-            return .green
-        case 15..<30:
-            return .blue
-        case 30..<50:
-            return .yellow
-        case 50..<75:
-            return .orange
-        default:
-            return .red
-        }
-    }
-
-    private var accuracyIcon: String {
-        switch gpsAccuracyMeters {
-        case 0..<15:
-            return "location.fill"
-        case 15..<30:
-            return "location.fill"
-        case 30..<50:
-            return "location.circle.fill"
-        case 50..<75:
-            return "location.circle"
-        default:
-            return "location.slash.fill"
-        }
-    }
-    
-    // MARK: - Helper Functions
-    
-    private func initializeDefaultVehicleIfNeeded() {
-        if vehicles.isEmpty {
-            let defaultVehicle = Vehicle(
-                name: "My Car",
-                cityMPG: cityMPG,
-                highwayMPG: highwayMPG,
-                fuelTankCapacity: 15.0
-            )
-            saveVehicles([defaultVehicle])
-            selectedVehicleID = defaultVehicle.id
-        }
-    }
-    
-    private func addFavoriteAddress() {
-        let trimmedName = newFavoriteName.trimmingCharacters(in: .whitespaces)
-        let trimmedAddress = newFavoriteAddress.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty, !trimmedAddress.isEmpty else { return }
-        let favorite = FavoriteAddress(name: trimmedName, address: trimmedAddress)
-        tripManager.addFavoriteAddress(favorite)
-        newFavoriteName = ""
-        newFavoriteAddress = ""
-    }
-    
-    private func resetAppToStockSettings() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: "userFirstName")
-        defaults.removeObject(forKey: "userHomeAddress")
-        defaults.removeObject(forKey: "userWorkAddress")
-        defaults.removeObject(forKey: "hasSeenOnboarding")
-        defaults.removeObject(forKey: "savedTrips")
-        defaults.removeObject(forKey: "savedBackground")
-        defaults.removeObject(forKey: "defaultTripCategory")
-        defaults.removeObject(forKey: "tripCategories")
-        defaults.removeObject(forKey: "autoTripDetectionEnabled")
-        
-        // Access through a local variable to avoid wrapper issues
-        let manager = tripManager
-        manager.trips.removeAll()
-        manager.removeBackgroundImage()
-
-        userFirstName = ""
-        hasSeenOnboarding = false
-        defaultTripCategory = "Business"
-        autoTripDetectionEnabled = false
-        saveCategories(["Other"])
-    }
-    
-    private var locationAuthorized: Bool {
-        switch locationPermission.status {
-        case .authorizedAlways, .authorizedWhenInUse:
-            return true
-        default:
-            return false
-        }
-    }
-    
-    private var locationStatusText: String {
-        switch locationPermission.status {
-        case .notDetermined: return "Not Determined"
-        case .restricted: return "Restricted"
-        case .denied: return "Denied"
-        case .authorizedAlways: return "Authorized Always"
-        case .authorizedWhenInUse: return "Authorized When In Use"
-        @unknown default: return "Unknown"
-        }
-    }
-    
-    private var motionAuthorized: Bool {
-        switch motionPermission.status {
-        case .authorized:
-            return true
-        case .notDetermined, .restricted, .denied:
-            return false
-        @unknown default:
-            return false
-        }
-    }
-    
-    private var motionStatusText: String {
-        switch motionPermission.status {
-        case .notDetermined: return "Not Determined"
-        case .restricted: return "Restricted"
-        case .denied: return "Denied"
-        case .authorized: return "Authorized"
-        @unknown default: return "Unknown"
-        }
-    }
-    
-    private var microphoneAuthorized: Bool {
-        microphonePermission.status == .granted
-    }
-    
-    private var microphoneStatusText: String {
-        switch microphonePermission.status {
-        case .undetermined: return "Not Determined"
-        case .denied: return "Denied"
-        case .granted: return "Authorized"
-        @unknown default: return "Unknown"
-        }
-    }
-    
-    private func authenticateBeforeDisablingLogLock() {
-        let context = LAContext()
-        var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Unlock to change log protection settings") { success, evalError in
-                DispatchQueue.main.async {
-                    if success {
-                        tripLogProtectionEnabled = false
-                        showLogLockAuthError = false
-                        logLockAuthErrorMessage = ""
-                    } else {
-                        showLogLockAuthError = true
-                        logLockAuthErrorMessage = evalError?.localizedDescription ?? "Authentication failed."
-                    }
-                }
-            }
-        } else {
-            showLogLockAuthError = true
-            logLockAuthErrorMessage = error?.localizedDescription ?? "Face ID or Touch ID not available."
-        }
-    }
-    
-    private func exportTripData() {
-        let gpxString = generateGPX()
-        shareContent(gpxString, filename: "waylon_trips_\(Date().ISO8601Format()).gpx")
-    }
-
-    private func generateGPX() -> String {
-        var gpx = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <gpx version="1.1" creator="WaylonApp" xmlns="http://www.topografix.com/GPX/1/1">
-        <metadata>
-        <name>Waylon Trips Export</name>
-        <time>\(ISO8601DateFormatter().string(from: Date()))</time>
-        </metadata>
-        
-        """
-        
-        for (index, trip) in tripManager.trips.enumerated() {
-            let categoryString: String = {
-                let mirror = Mirror(reflecting: trip)
-                if let cat = mirror.children.first(where: { $0.label == "reason" })?.value as? String {
-                    return cat
-                }
-                return "Uncategorized"
-            }()
             
-            let dateFormatter = ISO8601DateFormatter()
-            let startTime = dateFormatter.string(from: trip.startTime)
-            let endTime = dateFormatter.string(from: trip.endTime)
-            
-            gpx += """
-            <trk>
-            <name>Trip \(index + 1) - \(categoryString)</name>
-            <desc>\(trip.notes.isEmpty ? "No notes" : trip.notes)</desc>
-            <time>\(startTime)</time>
-            <trkseg>
-            
-            """
-            
-            // Add route points with timestamps
-            let routeCount = trip.routeCoordinates.count
-            if routeCount > 0 {
-                let timeDelta = trip.endTime.timeIntervalSince(trip.startTime) / Double(max(routeCount - 1, 1))
-                
-                for (idx, point) in trip.routeCoordinates.enumerated() {
-                    let pointTime = trip.startTime.addingTimeInterval(timeDelta * Double(idx))
-                    let pointTimeString = dateFormatter.string(from: pointTime)
-                    
-                    gpx += "<trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">\n"
-                    gpx += "<time>\(pointTimeString)</time>\n"
-                    
-                    // Add elevation if available (set to 0 as default)
-                    gpx += "<ele>0</ele>\n"
-                    
-                    gpx += "</trkpt>\n"
-                }
+            Section(footer: Text("Lower GPS accuracy values provide more precise location tracking but use more battery. Battery saving mode optimizes for longest battery life.")) {
+                EmptyView()
             }
-            
-            gpx += """
-            </trkseg>
-            </trk>
-            
-            """
         }
-        
-        gpx += "</gpx>"
-        return gpx
-    }
-
-    private func shareContent(_ content: String, filename: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        do {
-            try content.write(to: tempURL, atomically: true, encoding: .utf8)
-            
-            let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-            
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first,
-               let rootVC = window.rootViewController {
-                
-                // For iPad support
-                if let popover = activityVC.popoverPresentationController {
-                    popover.sourceView = rootVC.view
-                    popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                rootVC.present(activityVC, animated: true)
-            }
-        } catch {
-            print("Failed to write GPX file: \(error.localizedDescription)")
-        }
-    }
-    
-    private func shareApp() {
-        let activityVC = UIActivityViewController(
-            activityItems: ["Check out this amazing trip tracking app: WaylonApp"],
-            applicationActivities: nil
-        )
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(activityVC, animated: true)
-        }
-    }
-    
-    private func clearCache() {
-        URLCache.shared.removeAllCachedResponses()
-        print("Cache cleared")
-    }
-    
-    private func exportAllTripsAsCSV() {
-        let csvString = generateTripCSV()
-        shareContent(csvString, filename: "waylon_trips_\(Date().ISO8601Format()).csv")
-    }
-    
-    private func exportAllTripsAsJSON() {
-        guard let jsonData = try? JSONEncoder().encode(tripManager.trips),
-              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
-        shareContent(jsonString, filename: "waylon_backup_\(Date().ISO8601Format()).json")
-    }
-    
-    private func clearAllTripData() {
-        let alert = UIAlertController(
-            title: "Clear All Trip Data?",
-            message: "This will permanently delete all trips, audio notes, and photos. This action cannot be undone.",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Delete All", style: .destructive) { _ in
-            tripManager.trips.removeAll()
-        })
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootVC = window.rootViewController {
-            rootVC.present(alert, animated: true)
-        }
-    }
-    
-    private func generateTripCSV() -> String {
-        // Local formatters to avoid relying on unknown Trip string fields
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .short
-        dateFormatter.timeStyle = .none
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-
-        func safeString(_ value: String?) -> String { value ?? "" }
-
-        var csv = "Date,Start Time,End Time,Distance,Duration,Category,Start Address,End Address,Notes\n"
-        for trip in tripManager.trips {
-            // Try to infer commonly available properties. We assume Trip likely has start and end Date properties named
-            // `start`/`end` or a single `date`. We compute strings defensively.
-            var dateString = ""
-            var startTimeString = ""
-            var endTimeString = ""
-            var durationString = ""
-
-            // Reflect over potential common property names without using reflection APIs, just optional chaining patterns.
-            // We'll use Swift optional casting via key paths not available here, so do a sequence of if-lets by accessing
-            // known likely names using Mirror.
-            let mirror = Mirror(reflecting: trip)
-            var startDateValue: Date? = nil
-            var endDateValue: Date? = nil
-            var singleDateValue: Date? = nil
-
-            for child in mirror.children {
-                switch child.label {
-                case "startDate", "start":
-                    startDateValue = child.value as? Date
-                case "endDate", "end":
-                    endDateValue = child.value as? Date
-                case "date":
-                    singleDateValue = child.value as? Date
-                default:
-                    break
-                }
-            }
-
-            if let start = startDateValue {
-                dateString = dateFormatter.string(from: start)
-                startTimeString = timeFormatter.string(from: start)
-            } else if let date = singleDateValue {
-                dateString = dateFormatter.string(from: date)
-            }
-
-            if let end = endDateValue {
-                endTimeString = timeFormatter.string(from: end)
-            }
-
-            if let start = startDateValue, let end = endDateValue {
-                let duration = end.timeIntervalSince(start)
-                if duration > 0 {
-                    let minutes = Int(duration / 60)
-                    let hours = minutes / 60
-                    let mins = minutes % 60
-                    durationString = hours > 0 ? String(format: "%dh %dm", hours, mins) : String(format: "%dm", mins)
-                }
-            }
-
-            let distance = String(format: "%.2f", trip.distance)
-            let category = safeString((Mirror(reflecting: trip).children.first { $0.label == "category" }?.value as? String) ?? "")
-            let startAddress = safeString((Mirror(reflecting: trip).children.first { $0.label == "startAddress" }?.value as? String) ?? "")
-            let endAddress = safeString((Mirror(reflecting: trip).children.first { $0.label == "endAddress" }?.value as? String) ?? "")
-            let notesRaw: String = {
-                if let n = Mirror(reflecting: trip).children.first(where: { $0.label == "notes" })?.value as? String { return n }
-                if let nOpt = Mirror(reflecting: trip).children.first(where: { $0.label == "notes" })?.value as? String? { return nOpt ?? "" }
-                return ""
-            }()
-            let notes = notesRaw.replacingOccurrences(of: "\"", with: "\"\"")
-
-            let row = "\"\(dateString)\",\"\(startTimeString)\",\"\(endTimeString)\",\(distance),\(durationString.isEmpty ? "" : durationString),\"\(category)\",\"\(startAddress)\",\"\(endAddress)\",\"\(notes)\"\n"
-            csv += row
-        }
-        return csv
-    
+        .navigationTitle("Performance")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-// MARK: - Supporting Views
-
-struct SettingsCard<Content: View>: View {
-    let icon: String
-    let title: String
-    let iconColor: Color
-    let content: Content
-    
-    init(icon: String, title: String, iconColor: Color, @ViewBuilder content: () -> Content) {
-        self.icon = icon
-        self.title = title
-        self.iconColor = iconColor
-        self.content = content()
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .foregroundColor(iconColor)
-                    .font(.title2)
-                Text(title)
-                    .font(.headline)
-                Spacer()
-            }
-            
-            content
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                )
-        )
-    }
-}
+// MARK: - Supporting Components (kept from original)
 
 struct QuickActionButton: View {
     let icon: String
@@ -1494,56 +1198,68 @@ struct GlassButtonStyle: ButtonStyle {
     }
 }
 
-struct GlassProminentButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundColor(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.thickMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(.white.opacity(0.3), lineWidth: 1)
-                    )
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.blue.opacity(0.3))
-                    )
-            )
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+struct StorageBreakdownRow: View {
+    let icon: String
+    let label: String
+    let size: Int64
+    let total: Int64
+    let color: Color
+    
+    private var percentage: Double {
+        guard total > 0 else { return 0 }
+        return Double(size) / Double(total)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                    .frame(width: 20)
+                Text(label)
+                    .font(.subheadline)
+                Spacer()
+                Text(StorageCalculator.formatBytes(size))
+                    .font(.subheadline.bold())
+                    .foregroundColor(.secondary)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 6)
+                        .cornerRadius(3)
+                    
+                    Rectangle()
+                        .fill(color)
+                        .frame(width: geometry.size.width * percentage, height: 6)
+                        .cornerRadius(3)
+                }
+            }
+            .frame(height: 6)
+        }
     }
 }
 
-struct GlassEffectModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    let tintColor: Color?
+// MARK: - Vehicle Model
+struct Vehicle: Identifiable, Codable, Equatable {
+    let id: String
+    var name: String
+    var cityMPG: Double
+    var highwayMPG: Double
+    var fuelTankCapacity: Double
     
-    init(cornerRadius: CGFloat = 12, tintColor: Color? = nil) {
-        self.cornerRadius = cornerRadius
-        self.tintColor = tintColor
-    }
-    
-    func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(tintColor ?? Color.clear)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(.white.opacity(0.2), lineWidth: 1)
-                    )
-            )
+    init(id: String = UUID().uuidString, name: String, cityMPG: Double, highwayMPG: Double, fuelTankCapacity: Double = 15.0) {
+        self.id = id
+        self.name = name
+        self.cityMPG = cityMPG
+        self.highwayMPG = highwayMPG
+        self.fuelTankCapacity = fuelTankCapacity
     }
 }
 
-// MARK: - Subviews
-
+// MARK: - Favorite Addresses View
 struct FavoriteAddressesView: View {
     @EnvironmentObject var tripManager: TripManager
     @StateObject private var searchCompleter = AddressSearchCompleter()
@@ -1627,6 +1343,7 @@ struct FavoriteAddressesView: View {
     }
 }
 
+// MARK: - Vehicle Manager View
 struct VehicleManagerView: View {
     let vehicles: [Vehicle]
     @Binding var selectedVehicleID: String
@@ -1761,6 +1478,7 @@ struct VehicleManagerView: View {
     }
 }
 
+// MARK: - Privacy Settings View
 struct PrivacySettingsView: View {
     @StateObject private var locationPermission = LocationPermissionManager()
     @StateObject private var motionPermission = MotionPermissionManager()
@@ -1873,6 +1591,143 @@ struct PrivacySettingsView: View {
     }
 }
 
+// MARK: - Category Manager View
+struct CategoryManagerView: View {
+    @AppStorage("tripCategories") private var tripCategoriesData: String = ""
+    @AppStorage("defaultTripCategory") private var defaultTripCategory: String = "Business"
+    
+    @Environment(\.dismiss) var dismiss
+    @State private var categories: [String] = []
+    @State private var newCategoryName = ""
+    @State private var editingCategory: String?
+    @State private var editingName = ""
+    
+    private let defaultCategories = ["Business", "Personal", "Vacation", "Photography", "DoorDash", "Uber"]
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Categories")) {
+                    ForEach(categories.filter { $0 != "Other" }, id: \.self) { category in
+                        HStack {
+                            if editingCategory == category {
+                                TextField("Category name", text: $editingName, onCommit: {
+                                    saveEdit(oldName: category)
+                                })
+                                .textFieldStyle(.roundedBorder)
+                            } else {
+                                Text(category)
+                                Spacer()
+                                if !defaultCategories.contains(category) || category != "Other" {
+                                    Button(action: {
+                                        editingCategory = category
+                                        editingName = category
+                                    }) {
+                                        Image(systemName: "pencil")
+                                            .foregroundColor(.blue)
+                                    }
+                                    .buttonStyle(BorderlessButtonStyle())
+                                }
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        deleteCategories(at: offsets)
+                    }
+                    
+                    HStack {
+                        Text("Other")
+                        Spacer()
+                        Image(systemName: "lock.fill")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                }
+                
+                Section(header: Text("Add Category")) {
+                    HStack {
+                        TextField("New category name", text: $newCategoryName)
+                        Button(action: addCategory) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                        }
+                        .disabled(newCategoryName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                
+                Section(footer: Text("Categories help you organize your trips. The 'Other' category cannot be deleted.")) {
+                    EmptyView()
+                }
+            }
+            .navigationTitle("Manage Categories")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        saveCategories(categories)
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                loadCategories()
+            }
+        }
+    }
+    
+    private func loadCategories() {
+        let data = Data(tripCategoriesData.utf8)
+        if let decoded = try? JSONDecoder().decode([String].self, from: data), !decoded.isEmpty {
+            categories = decoded
+        } else {
+            categories = defaultCategories + ["Other"]
+        }
+    }
+    
+    private func addCategory() {
+        let trimmed = newCategoryName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !categories.contains(trimmed) else { return }
+        categories.insert(trimmed, at: categories.count - 1)
+        newCategoryName = ""
+    }
+    
+    private func deleteCategories(at offsets: IndexSet) {
+        let filteredCategories = categories.filter { $0 != "Other" }
+        var toDelete: [String] = []
+        for index in offsets {
+            toDelete.append(filteredCategories[index])
+        }
+        categories.removeAll { toDelete.contains($0) }
+        
+        if toDelete.contains(defaultTripCategory) {
+            defaultTripCategory = "Other"
+        }
+    }
+    
+    private func saveEdit(oldName: String) {
+        let trimmed = editingName.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, let index = categories.firstIndex(of: oldName) {
+            categories[index] = trimmed
+            if defaultTripCategory == oldName {
+                defaultTripCategory = trimmed
+            }
+        }
+        editingCategory = nil
+        editingName = ""
+    }
+    
+    private func saveCategories(_ cats: [String]) {
+        var all = Array(Set(cats))
+        if !all.contains("Other") {
+            all.append("Other")
+        }
+        all = all.filter { $0 != "Other" }.sorted() + ["Other"]
+        if let data = try? JSONEncoder().encode(all) {
+            tripCategoriesData = String(data: data, encoding: .utf8) ?? tripCategoriesData
+        }
+    }
+}
+
+// MARK: - Bypass Code View
 struct BypassCodeView: View {
     @Binding var isPresented: Bool
     @Binding var showJamesDrozImage: Bool
@@ -1932,469 +1787,51 @@ struct BypassCodeView: View {
     }
 }
 
-struct DataManagementView: View {
-    @EnvironmentObject var tripManager: TripManager
-    @AppStorage("useKilometers") private var useKilometers: Bool = false
-    @AppStorage("autoDeleteTripsAfterDays") private var autoDeleteTripsAfterDays: Int = 0
+// MARK: - Permission Managers
+class LocationPermissionManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var status: CLAuthorizationStatus = CLLocationManager.authorizationStatus()
+    private let manager = CLLocationManager()
     
-    @Environment(\.dismiss) var dismiss
-    @State private var showExportSuccess = false
-    @State private var exportMessage = ""
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Trip Statistics")) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Total Trips")
-                                .foregroundColor(.secondary)
-                            Text("\(tripManager.trips.count)")
-                                .font(.title)
-                                .bold()
-                        }
-                        Spacer()
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Total Distance")
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%.1f %@",
-                                       tripManager.trips.reduce(0) { $0 + $1.distance },
-                                       useKilometers ? "km" : "mi"))
-                                .font(.title)
-                                .bold()
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-                
-                Section(header: Text("Export Data")) {
-                    Button(action: exportAsCSV) {
-                        Label("Export as CSV", systemImage: "doc.text.fill")
-                    }
-                    Button(action: exportAsJSON) {
-                        Label("Backup Data (JSON)", systemImage: "doc.badge.arrow.up.fill")
-                    }
-                    Button(action: exportAsGPX) {
-                        Label("Export as GPX", systemImage: "location.fill")
-                    }
-                }
-                
-                Section(header: Text("Import Data")) {
-                    Button(action: {}) {
-                        Label("Restore from Backup", systemImage: "arrow.down.doc.fill")
-                    }
-                }
-                
-                Section(header: Text("Auto-Delete")) {
-                    Picker("Delete trips after", selection: $autoDeleteTripsAfterDays) {
-                        Text("Never").tag(0)
-                        Text("30 days").tag(30)
-                        Text("90 days").tag(90)
-                        Text("6 months").tag(180)
-                        Text("1 year").tag(365)
-                    }
-                    
-                    if autoDeleteTripsAfterDays > 0 {
-                        Text("Trips older than \(autoDeleteTripsAfterDays) days will be automatically deleted")
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
-                }
-                
-                Section(header: Text("Storage")) {
-                    HStack {
-                        Text("App Data Size")
-                        Spacer()
-                        Text(calculateAppDataSize())
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Button(action: {
-                        tripManager.trips.removeAll()
-                    }) {
-                        Label("Delete All Trips", systemImage: "trash.fill")
-                            .foregroundColor(.red)
-                    }
-                }
-            }
-            .navigationTitle("Data Management")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .alert("Export Complete", isPresented: $showExportSuccess) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(exportMessage)
-            }
-        }
+    override init() {
+        super.init()
+        manager.delegate = self
     }
     
-    private func exportAsCSV() {
-        let csvString = generateTripCSV()
-        shareContent(csvString, filename: "waylon_trips_\(formattedDate()).csv")
-        exportMessage = "Trips exported as CSV"
-        showExportSuccess = true
+    func request() {
+        manager.requestWhenInUseAuthorization()
     }
     
-    private func exportAsJSON() {
-        guard let jsonData = try? JSONEncoder().encode(tripManager.trips),
-              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
-        shareContent(jsonString, filename: "waylon_backup_\(formattedDate()).json")
-        exportMessage = "Backup created successfully"
-        showExportSuccess = true
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        self.status = status
     }
-    
-    private func exportAsGPX() {
-        let gpxString = generateGPX()
-        shareContent(gpxString, filename: "waylon_trips_\(formattedDate()).gpx")
-        exportMessage = "Trips exported as GPX"
-        showExportSuccess = true
-    }
-    
-    private func generateTripCSV() -> String {
-        // Local formatters to avoid relying on unknown Trip string fields
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .short
-        dateFormatter.timeStyle = .none
-
-        let timeFormatter = DateFormatter()
-        timeFormatter.dateStyle = .none
-        timeFormatter.timeStyle = .short
-
-        func safeString(_ value: String?) -> String { value ?? "" }
-
-        var csv = "Date,Start Time,End Time,Distance,Duration,Category,Start Address,End Address,Notes\n"
-        for trip in tripManager.trips {
-            // Try to infer commonly available properties. We assume Trip likely has start and end Date properties named
-            // `start`/`end` or a single `date`. We compute strings defensively.
-            var dateString = ""
-            var startTimeString = ""
-            var endTimeString = ""
-            var durationString = ""
-
-            // Reflect over potential common property names without using reflection APIs, just optional chaining patterns.
-            // We'll use Swift optional casting via key paths not available here, so do a sequence of if-lets by accessing
-            // known likely names using Mirror.
-            let mirror = Mirror(reflecting: trip)
-            var startDateValue: Date? = nil
-            var endDateValue: Date? = nil
-            var singleDateValue: Date? = nil
-
-            for child in mirror.children {
-                switch child.label {
-                case "startDate", "start":
-                    startDateValue = child.value as? Date
-                case "endDate", "end":
-                    endDateValue = child.value as? Date
-                case "date":
-                    singleDateValue = child.value as? Date
-                default:
-                    break
-                }
-            }
-
-            if let start = startDateValue {
-                dateString = dateFormatter.string(from: start)
-                startTimeString = timeFormatter.string(from: start)
-            } else if let date = singleDateValue {
-                dateString = dateFormatter.string(from: date)
-            }
-
-            if let end = endDateValue {
-                endTimeString = timeFormatter.string(from: end)
-            }
-
-            if let start = startDateValue, let end = endDateValue {
-                let duration = end.timeIntervalSince(start)
-                if duration > 0 {
-                    let minutes = Int(duration / 60)
-                    let hours = minutes / 60
-                    let mins = minutes % 60
-                    durationString = hours > 0 ? String(format: "%dh %dm", hours, mins) : String(format: "%dm", mins)
-                }
-            }
-
-            let distance = String(format: "%.2f", trip.distance)
-            let category = safeString((Mirror(reflecting: trip).children.first { $0.label == "category" }?.value as? String) ?? "")
-            let startAddress = safeString((Mirror(reflecting: trip).children.first { $0.label == "startAddress" }?.value as? String) ?? "")
-            let endAddress = safeString((Mirror(reflecting: trip).children.first { $0.label == "endAddress" }?.value as? String) ?? "")
-            let notesRaw: String = {
-                if let n = Mirror(reflecting: trip).children.first(where: { $0.label == "notes" })?.value as? String { return n }
-                if let nOpt = Mirror(reflecting: trip).children.first(where: { $0.label == "notes" })?.value as? String? { return nOpt ?? "" }
-                return ""
-            }()
-            let notes = notesRaw.replacingOccurrences(of: "\"", with: "\"\"")
-
-            let row = "\"\(dateString)\",\"\(startTimeString)\",\"\(endTimeString)\",\(distance),\(durationString.isEmpty ? "" : durationString),\"\(category)\",\"\(startAddress)\",\"\(endAddress)\",\"\(notes)\"\n"
-            csv += row
-        }
-        return csv
-    }
-    
-    private func generateGPX() -> String {
-        var gpx = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <gpx version="1.1" creator="WaylonApp">
-        <metadata>
-        <name>Waylon Trips Export</name>
-        <time>\(ISO8601DateFormatter().string(from: Date()))</time>
-        </metadata>
-        
-        """
-        
-        for (index, trip) in tripManager.trips.enumerated() {
-            // Safely derive a category string (Trip may not have a `category` member)
-            let categoryString: String = {
-                let mirror = Mirror(reflecting: trip)
-                if let cat = mirror.children.first(where: { $0.label == "category" })?.value as? String {
-                    return cat
-                }
-                if let catOpt = mirror.children.first(where: { $0.label == "category" })?.value as? String? {
-                    return catOpt ?? "Uncategorized"
-                }
-                return "Uncategorized"
-            }()
-            
-            gpx += """
-            <trk>
-            <name>Trip \(index + 1) - \(categoryString)</name>
-            <trkseg>
-            
-            """
-            
-            // Add route points if available
-            for point in trip.routeCoordinates {
-                gpx += "<trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\"></trkpt>\n"
-            }
-            
-            gpx += """
-            </trkseg>
-            </trk>
-            
-            """
-        }
-        
-        gpx += "</gpx>"
-        return gpx
-    }
-    
-    private func shareContent(_ content: String, filename: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
-        
-        let activityVC = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first {
-            window.rootViewController?.present(activityVC, animated: true)
-        }
-    }
-    
-    private func formattedDate() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
-    }
-    
-    private func calculateAppDataSize() -> String {
-        // Estimate based on trip count (rough calculation)
-        let estimatedBytes = tripManager.trips.count * 2000 // ~2KB per trip
-        if estimatedBytes < 1024 {
-            return "\(estimatedBytes) bytes"
-        } else if estimatedBytes < 1024 * 1024 {
-            return String(format: "%.1f KB", Double(estimatedBytes) / 1024.0)
-        } else {
-            return String(format: "%.1f MB", Double(estimatedBytes) / (1024.0 * 1024.0))
-        }
-    }
-    
 }
 
-// MARK: - Category Manager View
-struct CategoryManagerView: View {
-    @AppStorage("tripCategories") private var tripCategoriesData: String = ""
-    @AppStorage("defaultTripCategory") private var defaultTripCategory: String = "Business"
-    
-    @Environment(\.dismiss) var dismiss
-    @State private var categories: [String] = []
-    @State private var newCategoryName = ""
-    @State private var editingCategory: String?
-    @State private var editingName = ""
-    
-    private let defaultCategories = ["Business", "Personal", "Vacation", "Photography", "DoorDash", "Uber"]
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Categories")) {
-                    ForEach(categories.filter { $0 != "Other" }, id: \.self) { category in
-                        HStack {
-                            if editingCategory == category {
-                                TextField("Category name", text: $editingName, onCommit: {
-                                    saveEdit(oldName: category)
-                                })
-                                .textFieldStyle(.roundedBorder)
-                            } else {
-                                Text(category)
-                                Spacer()
-                                if !defaultCategories.contains(category) || category != "Other" {
-                                    Button(action: {
-                                        editingCategory = category
-                                        editingName = category
-                                    }) {
-                                        Image(systemName: "pencil")
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(BorderlessButtonStyle())
-                                }
-                            }
-                        }
-                    }
-                    .onDelete { offsets in
-                        deleteCategories(at: offsets)
-                    }
-                    
-                    // Other category (always last, can't be deleted)
-                    HStack {
-                        Text("Other")
-                        Spacer()
-                        Image(systemName: "lock.fill")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                    }
-                }
-                
-                Section(header: Text("Add Category")) {
-                    HStack {
-                        TextField("New category name", text: $newCategoryName)
-                        Button(action: addCategory) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title2)
-                        }
-                        .disabled(newCategoryName.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                }
-                
-                Section(footer: Text("Categories help you organize your trips. The 'Other' category cannot be deleted.")) {
-                    EmptyView()
-                }
+class MotionPermissionManager: ObservableObject {
+    @Published var status: CMAuthorizationStatus = CMMotionActivityManager.authorizationStatus()
+    func request() {
+        let activityManager = CMMotionActivityManager()
+        activityManager.queryActivityStarting(from: Date(), to: Date(), to: .main) { _, _ in
+            DispatchQueue.main.async {
+                self.status = CMMotionActivityManager.authorizationStatus()
             }
-            .navigationTitle("Manage Categories")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        saveCategories(categories)
-                        dismiss()
-                    }
-                }
-            }
-            .onAppear {
-                loadCategories()
-            }
-        }
-    }
-    
-    private func loadCategories() {
-        let data = Data(tripCategoriesData.utf8)
-        if let decoded = try? JSONDecoder().decode([String].self, from: data), !decoded.isEmpty {
-            categories = decoded
-        } else {
-            categories = defaultCategories + ["Other"]
-        }
-    }
-    
-    private func addCategory() {
-        let trimmed = newCategoryName.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, !categories.contains(trimmed) else { return }
-        categories.insert(trimmed, at: categories.count - 1) // Insert before "Other"
-        newCategoryName = ""
-    }
-    
-    private func deleteCategories(at offsets: IndexSet) {
-        let filteredCategories = categories.filter { $0 != "Other" }
-        var toDelete: [String] = []
-        for index in offsets {
-            toDelete.append(filteredCategories[index])
-        }
-        categories.removeAll { toDelete.contains($0) }
-        
-        // If default category was deleted, reset to "Other"
-        if toDelete.contains(defaultTripCategory) {
-            defaultTripCategory = "Other"
-        }
-    }
-    
-    private func saveEdit(oldName: String) {
-        let trimmed = editingName.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, let index = categories.firstIndex(of: oldName) {
-            categories[index] = trimmed
-            if defaultTripCategory == oldName {
-                defaultTripCategory = trimmed
-            }
-        }
-        editingCategory = nil
-        editingName = ""
-    }
-    
-    private func saveCategories(_ cats: [String]) {
-        var all = Array(Set(cats))
-        if !all.contains("Other") {
-            all.append("Other")
-        }
-        all = all.filter { $0 != "Other" }.sorted() + ["Other"]
-        if let data = try? JSONEncoder().encode(all) {
-            tripCategoriesData = String(data: data, encoding: .utf8) ?? tripCategoriesData
         }
     }
 }
 
-struct StorageBreakdownRow: View {
-    let icon: String
-    let label: String
-    let size: Int64
-    let total: Int64
-    let color: Color
-    
-    private var percentage: Double {
-        guard total > 0 else { return 0 }
-        return Double(size) / Double(total)
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                    .frame(width: 20)
-                Text(label)
-                    .font(.subheadline)
-                Spacer()
-                Text(StorageCalculator.formatBytes(size))
-                    .font(.subheadline.bold())
-                    .foregroundColor(.secondary)
+class MicrophonePermissionManager: ObservableObject {
+    @Published var status: AVAudioSession.RecordPermission = AVAudioSession.sharedInstance().recordPermission
+    func request() {
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            DispatchQueue.main.async {
+                self.status = AVAudioSession.sharedInstance().recordPermission
             }
-            
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                        .cornerRadius(3)
-                    
-                    Rectangle()
-                        .fill(color)
-                        .frame(width: geometry.size.width * percentage, height: 6)
-                        .cornerRadius(3)
-                }
-            }
-            .frame(height: 6)
         }
     }
 }
+
+// MARK: - Preview
 
 #Preview {
     SettingsView()
         .environmentObject(TripManager())
 }
-

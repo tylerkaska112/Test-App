@@ -1,13 +1,6 @@
-//
-//  TripEditView.swift
-//  waylon
-//
-//  Created by tyler kaska on 6/26/25.
-//  Enhanced version with improvements and additional features
-//
-
 import SwiftUI
 import AVFoundation
+import PhotosUI
 
 struct TripEditView: View {
     @Environment(\.dismiss) var dismiss
@@ -16,6 +9,7 @@ struct TripEditView: View {
 
     @State private var selectedImages: [UIImage] = []
     @State private var showImagePicker = false
+    @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var imagePickerSourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var audioNotes: [URL] = []
     @State private var isRecording = false
@@ -31,6 +25,7 @@ struct TripEditView: View {
     @State private var showDeleteAudioAlert = false
     @State private var audioToDelete: URL? = nil
     @State private var showPhotoSourcePicker = false
+    @State private var showPhotoPicker = false
     
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
@@ -72,267 +67,31 @@ struct TripEditView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - Trip Reason Section
-                Section(header: Text("Trip Reason")) {
-                    Picker("Reason", selection: $selectedReason) {
-                        ForEach(supportedCategories, id: \.self) { category in
-                            Text(category).tag(category)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .accessibilityLabel("Trip reason picker")
-                    
-                    if selectedReason == "Other" {
-                        VStack(alignment: .leading, spacing: 4) {
-                            TextField("Enter custom reason", text: $customReason)
-                                .onChange(of: customReason) { oldValue, newValue in
-                                    if newValue.count > maxCustomReasonLength {
-                                        customReason = String(newValue.prefix(maxCustomReasonLength))
-                                    }
-                                }
-                                .accessibilityLabel("Custom trip reason")
-                            
-                            Text("\(customReason.count)/\(maxCustomReasonLength)")
-                                .font(.caption)
-                                .foregroundColor(customReason.count >= maxCustomReasonLength ? .red : .secondary)
-                        }
-                    }
-                }
-                
-                // MARK: - Notes Section
-                Section(header: Text("Notes")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField("Add trip notes", text: $trip.notes, axis: .vertical)
-                            .lineLimit(3...6)
-                            .onChange(of: trip.notes) { oldValue, newValue in
-                                if newValue.count > maxNotesLength {
-                                    trip.notes = String(newValue.prefix(maxNotesLength))
-                                }
-                            }
-                            .accessibilityLabel("Trip notes")
-                        
-                        Text("\(trip.notes.count)/\(maxNotesLength)")
-                            .font(.caption)
-                            .foregroundColor(trip.notes.count >= maxNotesLength ? .red : .secondary)
-                    }
-                }
-                
-                // MARK: - Pay Section
-                Section(header: Text("Pay")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField("Enter amount", text: $trip.pay)
-                            .keyboardType(.decimalPad)
-                            .onChange(of: trip.pay) { oldValue, newValue in
-                                if newValue.count > maxPayLength {
-                                    trip.pay = String(newValue.prefix(maxPayLength))
-                                }
-                            }
-                            .accessibilityLabel("Payment amount")
-                        
-                        if !trip.pay.isEmpty {
-                            Text("\(trip.pay.count)/\(maxPayLength)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                
-                // MARK: - Photos Section
-                Section(header: HStack {
-                    Text("Photos")
-                    Spacer()
-                    if !selectedImages.isEmpty {
-                        Text("\(selectedImages.count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            if !selectedImages.isEmpty {
-                                ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, img in
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(uiImage: img)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 80, height: 80)
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                            .onTapGesture {
-                                                selectedFullImage = img
-                                            }
-                                            .accessibilityLabel("Photo \(index + 1)")
-                                            .accessibilityHint("Tap to view full size")
-                                        
-                                        Button {
-                                            photoToDelete = img
-                                            showDeletePhotoAlert = true
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundColor(.white)
-                                                .background(Color.red)
-                                                .clipShape(Circle())
-                                        }
-                                        .offset(x: 8, y: -8)
-                                        .accessibilityLabel("Delete photo")
-                                    }
-                                }
-                            }
-                            
-                            Button {
-                                showPhotoSourcePicker = true
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.largeTitle)
-                                        .foregroundColor(.accentColor)
-                                    Text("Add Photo")
-                                        .font(.caption)
-                                }
-                                .frame(width: 80, height: 80)
-                                .background(Color.secondary.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            }
-                            .accessibilityLabel("Add photo")
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-                
-                // MARK: - Audio Notes Section
-                Section(header: HStack {
-                    Text("Audio Notes")
-                    Spacer()
-                    if !audioNotes.isEmpty {
-                        Text("\(audioNotes.count)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }) {
-                    Button {
-                        if isRecording {
-                            stopRecording()
-                        } else {
-                            startRecording()
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                                .foregroundColor(isRecording ? .red : .accentColor)
-                            Text(isRecording ? "Stop Recording" : "Record Audio Note")
-                            if isRecording {
-                                Spacer()
-                                Text(formatDuration(recordingDuration))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .accessibilityLabel(isRecording ? "Stop recording" : "Start recording")
-                    
-                    if audioNotes.isEmpty && !isRecording {
-                        HStack {
-                            Spacer()
-                            VStack(spacing: 8) {
-                                Image(systemName: "waveform")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                                Text("No audio notes")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding()
-                            Spacer()
-                        }
-                    }
-                    
-                    ForEach(Array(audioNotes.enumerated()), id: \.offset) { index, url in
-                        HStack {
-                            Button {
-                                toggleAudioPlayback(url: url)
-                            } label: {
-                                Image(systemName: playingAudioURL == url ? "pause.circle.fill" : "play.circle.fill")
-                                    .foregroundColor(.accentColor)
-                            }
-                            .accessibilityLabel(playingAudioURL == url ? "Pause audio" : "Play audio")
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Audio Note \(index + 1)")
-                                    .font(.subheadline)
-                                if let duration = getAudioDuration(url: url) {
-                                    Text(formatDuration(duration))
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            Button {
-                                audioToDelete = url
-                                showDeleteAudioAlert = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red)
-                            }
-                            .accessibilityLabel("Delete audio note")
-                        }
-                    }
-                }
+                tripReasonSection
+                notesSection
+                paySection
+                photosSection
+                audioNotesSection
             }
             .navigationTitle("Edit Trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        saveTrip()
-                    }
-                    .disabled(!isFormValid || isSaving)
-                    .accessibilityLabel("Save trip")
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .disabled(isSaving)
-                    .accessibilityLabel("Cancel editing")
-                }
-                
-                ToolbarItem(placement: .keyboard) {
-                    HStack {
-                        Spacer()
-                        Button("Done") {
-                            hideKeyboard()
-                        }
-                    }
-                }
+                toolbarContent
             }
             .overlay {
-                if isSaving {
-                    ZStack {
-                        Color.black.opacity(0.3)
-                            .ignoresSafeArea()
-                        ProgressView("Saving...")
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .cornerRadius(10)
-                    }
-                }
+                savingOverlay
             }
             .sheet(isPresented: $showImagePicker) {
                 TripImagePicker(sourceType: imagePickerSourceType) { img in
                     selectedImages.append(img)
                 }
             }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $photoPickerItems, matching: .images)
+            .onChange(of: photoPickerItems) { oldValue, newValue in
+                loadPhotos(from: newValue)
+            }
             .confirmationDialog("Add Photo", isPresented: $showPhotoSourcePicker, titleVisibility: .visible) {
-                Button("Take Photo") {
-                    imagePickerSourceType = .camera
-                    showImagePicker = true
-                }
-                Button("Choose from Library") {
-                    imagePickerSourceType = .photoLibrary
-                    showImagePicker = true
-                }
-                Button("Cancel", role: .cancel) {}
+                photoSourceDialogContent
             }
             .sheet(item: $selectedFullImage) { image in
                 FullImageView(image: image) {
@@ -375,6 +134,319 @@ struct TripEditView: View {
         }
     }
     
+    // MARK: - View Components
+    
+    private var tripReasonSection: some View {
+        Section(header: Text("Trip Reason")) {
+            Picker("Reason", selection: $selectedReason) {
+                ForEach(supportedCategories, id: \.self) { category in
+                    Text(category).tag(category)
+                }
+            }
+            .pickerStyle(.menu)
+            .accessibilityLabel("Trip reason picker")
+            
+            if selectedReason == "Other" {
+                customReasonField
+            }
+        }
+    }
+    
+    private var customReasonField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Enter custom reason", text: $customReason)
+                .onChange(of: customReason) { oldValue, newValue in
+                    if newValue.count > maxCustomReasonLength {
+                        customReason = String(newValue.prefix(maxCustomReasonLength))
+                    }
+                }
+                .accessibilityLabel("Custom trip reason")
+            
+            Text("\(customReason.count)/\(maxCustomReasonLength)")
+                .font(.caption)
+                .foregroundColor(customReason.count >= maxCustomReasonLength ? .red : .secondary)
+        }
+    }
+    
+    private var notesSection: some View {
+        Section(header: Text("Notes")) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Add trip notes", text: $trip.notes, axis: .vertical)
+                    .lineLimit(3...6)
+                    .onChange(of: trip.notes) { oldValue, newValue in
+                        if newValue.count > maxNotesLength {
+                            trip.notes = String(newValue.prefix(maxNotesLength))
+                        }
+                    }
+                    .accessibilityLabel("Trip notes")
+                
+                Text("\(trip.notes.count)/\(maxNotesLength)")
+                    .font(.caption)
+                    .foregroundColor(trip.notes.count >= maxNotesLength ? .red : .secondary)
+            }
+        }
+    }
+    
+    private var paySection: some View {
+        Section(header: Text("Pay")) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Enter amount", text: $trip.pay)
+                    .keyboardType(.decimalPad)
+                    .onChange(of: trip.pay) { oldValue, newValue in
+                        if newValue.count > maxPayLength {
+                            trip.pay = String(newValue.prefix(maxPayLength))
+                        }
+                    }
+                    .accessibilityLabel("Payment amount")
+                
+                if !trip.pay.isEmpty {
+                    Text("\(trip.pay.count)/\(maxPayLength)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+    
+    private var photosSection: some View {
+        Section(header: photosSectionHeader) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    if !selectedImages.isEmpty {
+                        ForEach(Array(selectedImages.enumerated()), id: \.offset) { index, img in
+                            photoThumbnail(image: img, index: index)
+                        }
+                    }
+                    
+                    addPhotoButton
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+    
+    private var photosSectionHeader: some View {
+        HStack {
+            Text("Photos")
+            Spacer()
+            if !selectedImages.isEmpty {
+                Text("\(selectedImages.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    private func photoThumbnail(image: UIImage, index: Int) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .onTapGesture {
+                    selectedFullImage = image
+                }
+                .accessibilityLabel("Photo \(index + 1)")
+                .accessibilityHint("Tap to view full size")
+            
+            Button {
+                photoToDelete = image
+                showDeletePhotoAlert = true
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundColor(.white)
+                    .background(Color.red)
+                    .clipShape(Circle())
+            }
+            .offset(x: 8, y: -8)
+            .accessibilityLabel("Delete photo")
+        }
+    }
+    
+    private var addPhotoButton: some View {
+        Button {
+            showPhotoSourcePicker = true
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.largeTitle)
+                    .foregroundColor(.accentColor)
+                Text("Add Photo")
+                    .font(.caption)
+            }
+            .frame(width: 80, height: 80)
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .accessibilityLabel("Add photo")
+    }
+    
+    private var audioNotesSection: some View {
+        Section(header: audioNotesSectionHeader) {
+            recordButton
+            
+            if audioNotes.isEmpty && !isRecording {
+                emptyAudioState
+            }
+            
+            ForEach(Array(audioNotes.enumerated()), id: \.offset) { index, url in
+                audioNoteRow(url: url, index: index)
+            }
+        }
+    }
+    
+    private var audioNotesSectionHeader: some View {
+        HStack {
+            Text("Audio Notes")
+            Spacer()
+            if !audioNotes.isEmpty {
+                Text("\(audioNotes.count)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+    
+    private var recordButton: some View {
+        Button {
+            if isRecording {
+                stopRecording()
+            } else {
+                startRecording()
+            }
+        } label: {
+            HStack {
+                Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                    .foregroundColor(isRecording ? .red : .accentColor)
+                Text(isRecording ? "Stop Recording" : "Record Audio Note")
+                if isRecording {
+                    Spacer()
+                    Text(formatDuration(recordingDuration))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .accessibilityLabel(isRecording ? "Stop recording" : "Start recording")
+    }
+    
+    private var emptyAudioState: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "waveform")
+                    .font(.largeTitle)
+                    .foregroundColor(.secondary)
+                Text("No audio notes")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            Spacer()
+        }
+    }
+    
+    private func audioNoteRow(url: URL, index: Int) -> some View {
+        HStack {
+            Button {
+                toggleAudioPlayback(url: url)
+            } label: {
+                Image(systemName: playingAudioURL == url ? "pause.circle.fill" : "play.circle.fill")
+                    .foregroundColor(.accentColor)
+            }
+            .accessibilityLabel(playingAudioURL == url ? "Pause audio" : "Play audio")
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Audio Note \(index + 1)")
+                    .font(.subheadline)
+                if let duration = getAudioDuration(url: url) {
+                    Text(formatDuration(duration))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            Button {
+                audioToDelete = url
+                showDeleteAudioAlert = true
+            } label: {
+                Image(systemName: "trash")
+                    .foregroundColor(.red)
+            }
+            .accessibilityLabel("Delete audio note")
+        }
+    }
+    
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button("Save") {
+                saveTrip()
+            }
+            .disabled(!isFormValid || isSaving)
+            .accessibilityLabel("Save trip")
+        }
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") {
+                dismiss()
+            }
+            .disabled(isSaving)
+            .accessibilityLabel("Cancel editing")
+        }
+        
+        ToolbarItem(placement: .keyboard) {
+            HStack {
+                Spacer()
+                Button("Done") {
+                    hideKeyboard()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var savingOverlay: some View {
+        if isSaving {
+            ZStack {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                ProgressView("Saving...")
+                    .padding()
+                    .background(Color(.systemBackground))
+                    .cornerRadius(10)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var photoSourceDialogContent: some View {
+        Button("Take Photo") {
+            imagePickerSourceType = .camera
+            showImagePicker = true
+        }
+        Button("Choose from Library") {
+            showPhotoPicker = true
+        }
+        Button("Cancel", role: .cancel) {}
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func loadPhotos(from items: [PhotosPickerItem]) {
+        Task {
+            for item in items {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    selectedImages.append(image)
+                }
+            }
+            photoPickerItems = []
+        }
+    }
+
     // MARK: - Setup & Cleanup
     
     private func setupView() {
@@ -527,19 +599,16 @@ struct TripEditView: View {
         isSaving = true
         
         DispatchQueue.global(qos: .userInitiated).async {
-            // Clean up old photo files
             for oldURL in trip.photoURLs {
                 try? FileManager.default.removeItem(at: oldURL)
             }
             
-            // Set trip reason
             if selectedReason == "Other" {
                 trip.reason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 trip.reason = selectedReason
             }
             
-            // Save images with compression
             trip.photoURLs = selectedImages.compactMap { image in
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
                 guard let data = image.jpegData(compressionQuality: 0.8) else { return nil }
@@ -552,7 +621,6 @@ struct TripEditView: View {
                 }
             }
             
-            // Save audio notes
             trip.audioNotes = audioNotes
             
             DispatchQueue.main.async {

@@ -1,11 +1,3 @@
-//
-//  JamesDrozImageView.swift
-//  waylon
-//
-//  Created by Tyler Kaska on 6/30/25.
-//
-
-
 import SwiftUI
 
 struct JamesDrozImageView: View {

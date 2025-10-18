@@ -73,7 +73,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
     }
     
     private func performSearch(query: String) {
-        // Set search region based on user location
         if let location = userLocation {
             let region = MKCoordinateRegion(
                 center: location.coordinate,
@@ -130,7 +129,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
         isSearching = false
     }
     
-    // Sort suggestions by distance from user location
     private func sortSuggestionsByDistance(_ completions: [MKLocalSearchCompletion]) async -> [MKLocalSearchCompletion] {
         guard let userLocation = userLocation else {
             return completions
@@ -152,7 +150,6 @@ class AddressSearchCompleter: NSObject, ObservableObject {
             }
         }
         
-        // Sort: items with distance first (ascending), then items without distance
         return completionsWithDistance.sorted { item1, item2 in
             switch (item1.distance, item2.distance) {
             case (.some(let d1), .some(let d2)):
@@ -174,7 +171,6 @@ extension AddressSearchCompleter: CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         userLocation = location
         
-        // Stop updating location after getting initial location to save battery
         if userLocation != nil {
             locationManager.stopUpdatingLocation()
         }

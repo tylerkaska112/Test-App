@@ -46,17 +46,14 @@ private struct TutorialTabPage1: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Navigation Buttons
             NavigationButtonsView(selectedTab: $selectedTab, isLastPage: false)
             
-            // Image Section
             ImageSection(
                 imageName: "NavigationScreen",
                 isEnlarged: $isImageEnlarged,
                 accessibilityLabel: "Tutorial page 1 image"
             )
             
-            // Content Section
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Main Screen (Map View)")

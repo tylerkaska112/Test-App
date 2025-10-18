@@ -1,10 +1,3 @@
-//
-//  TripRouteScrubbingView.swift
-//  waylon
-//
-//  Created by Tyler Kaska on 10/15/25.
-//
-
 import SwiftUI
 import MapKit
 import AVFoundation
@@ -14,8 +7,8 @@ struct RoutePoint: Identifiable {
     let id = UUID()
     let coordinate: CLLocationCoordinate2D
     let timestamp: Date
-    let speed: Double // in m/s
-    let distanceFromStart: Double // in miles
+    let speed: Double
+    let distanceFromStart: Double
     
     var speedMPH: Double {
         speed * 2.23694
@@ -691,10 +684,9 @@ struct InteractiveTripMapView: View {
         
         try? FileManager.default.removeItem(at: outputURL)
         
-        let videoSize = CGSize(width: 1080, height: 1920)
+        let videoSize = CGSize(width: 720, height: 1280)
         let fps: Int32 = 30
         
-        // Always aim for 30 seconds max
         let maxDuration: Double = 30.0
         let minFramesPerPoint = 1
         
@@ -717,7 +709,7 @@ struct InteractiveTripMapView: View {
         let totalFrames = routePoints.count * framesPerPoint
         
         print("Creating video: \(routePoints.count) points, \(totalFrames) frames, \(String(format: "%.1f", actualDuration)) seconds")
-        print("Memory-efficient mode: generating snapshots on-demand")
+        print("Hybrid mode: map snapshots every 3 seconds with simple rendering in between")
         
         await MainActor.run {
             self.exportProgress = 0.1
@@ -732,9 +724,10 @@ struct InteractiveTripMapView: View {
             AVVideoWidthKey: videoSize.width,
             AVVideoHeightKey: videoSize.height,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: 5000000,
+                AVVideoAverageBitRateKey: 3500000,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-                AVVideoMaxKeyFrameIntervalKey: fps
+                AVVideoMaxKeyFrameIntervalKey: fps,
+                AVVideoExpectedSourceFrameRateKey: fps
             ]
         ]
         
@@ -755,72 +748,58 @@ struct InteractiveTripMapView: View {
         videoWriter.startSession(atSourceTime: .zero)
         
         var frameCount = 0
-        var lastSnapshotPointIndex = -1
-        var currentSnapshot: UIImage?
         
-        // Generate snapshots in small batches to reduce memory
-        let snapshotCacheSize = 10 // Only cache 10 snapshots at a time
-        var snapshotCache: [Int: UIImage] = [:]
+        let snapshotInterval = fps * 3
+        var currentMapSnapshot: UIImage?
+        var nextSnapshotFrame = 0
         
-        await withCheckedContinuation { continuation in
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             videoWriterInput.requestMediaDataWhenReady(on: DispatchQueue(label: "videoWriterQueue")) {
-                while videoWriterInput.isReadyForMoreMediaData && frameCount < totalFrames {
-                    let presentationTime = CMTime(value: Int64(frameCount), timescale: fps)
-                    let pointIndex = frameCount / framesPerPoint
-                    
-                    // Check if we need a new snapshot
-                    if pointIndex != lastSnapshotPointIndex {
-                        // Check cache first
-                        if let cached = snapshotCache[pointIndex] {
-                            currentSnapshot = cached
-                        } else {
-                            // Generate snapshot on-demand
-                            let semaphore = DispatchSemaphore(value: 0)
+                autoreleasepool {
+                    while videoWriterInput.isReadyForMoreMediaData && frameCount < totalFrames {
+                        autoreleasepool {
+                            let presentationTime = CMTime(value: Int64(frameCount), timescale: fps)
+                            let pointIndex = frameCount / framesPerPoint
                             
-                            Task {
-                                let snapshot = await self.generateMapSnapshot(for: pointIndex, size: videoSize)
-                                currentSnapshot = snapshot
+                            if frameCount >= nextSnapshotFrame {
+                                currentMapSnapshot = nil
                                 
-                                // Add to cache and trim if needed
-                                if let snapshot = snapshot {
-                                    snapshotCache[pointIndex] = snapshot
-                                    
-                                    // Keep only recent snapshots
-                                    if snapshotCache.count > snapshotCacheSize {
-                                        let oldestKey = snapshotCache.keys.sorted().first
-                                        if let key = oldestKey {
-                                            snapshotCache.removeValue(forKey: key)
-                                        }
+                                let semaphore = DispatchSemaphore(value: 0)
+                                Task.detached { [pointIndex] in
+                                    let snapshot = await self.generateMapSnapshotCompressed(
+                                        for: pointIndex,
+                                        size: videoSize
+                                    )
+                                    currentMapSnapshot = snapshot
+                                    semaphore.signal()
+                                }
+                                semaphore.wait()
+                                
+                                nextSnapshotFrame = frameCount + Int(snapshotInterval)
+                                
+                                if frameCount % 90 == 0 {
+                                    let progress = 0.1 + (0.9 * Double(frameCount) / Double(totalFrames))
+                                    Task { @MainActor in
+                                        self.exportProgress = progress
                                     }
                                 }
-                                
-                                semaphore.signal()
                             }
                             
-                            semaphore.wait()
-                        }
-                        
-                        lastSnapshotPointIndex = pointIndex
-                    }
-                    
-                    if let pixelBuffer = self.createVideoFrameFast(
-                        size: videoSize,
-                        pointIndex: min(pointIndex, self.routePoints.count - 1),
-                        totalPoints: self.routePoints.count,
-                        cachedMapSnapshot: currentSnapshot
-                    ) {
-                        adaptor.append(pixelBuffer, withPresentationTime: presentationTime)
-                    }
-                    
-                    frameCount += 1
-                    
-                    if frameCount % 30 == 0 {
-                        let progress = 0.1 + (0.9 * Double(frameCount) / Double(totalFrames))
-                        Task { @MainActor in
-                            self.exportProgress = progress
+                            if let pixelBuffer = self.createVideoFrameHybrid(
+                                size: videoSize,
+                                pointIndex: min(pointIndex, self.routePoints.count - 1),
+                                totalPoints: self.routePoints.count,
+                                mapSnapshot: currentMapSnapshot
+                            ) {
+                                adaptor.append(pixelBuffer, withPresentationTime: presentationTime)
+                            }
+                            
+                            frameCount += 1
                         }
                     }
                 }
+                
+                currentMapSnapshot = nil
                 
                 if frameCount >= totalFrames {
                     videoWriterInput.markAsFinished()
@@ -838,6 +817,150 @@ struct InteractiveTripMapView: View {
         }
         
         return outputURL
+    }
+    
+    private func generateMapSnapshotCompressed(for pointIndex: Int, size: CGSize) async -> UIImage? {
+        let point = routePoints[pointIndex]
+        let mapRect = CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7)
+        
+        let mapSnapshotOptions = MKMapSnapshotter.Options()
+        let regionRadius: CLLocationDistance = 1500
+        
+        mapSnapshotOptions.region = MKCoordinateRegion(
+            center: point.coordinate,
+            latitudinalMeters: regionRadius * 2,
+            longitudinalMeters: regionRadius * 2
+        )
+        mapSnapshotOptions.size = mapRect.size
+        mapSnapshotOptions.scale = 1.0
+        
+        return await withCheckedContinuation { continuation in
+            let snapshotter = MKMapSnapshotter(options: mapSnapshotOptions)
+            snapshotter.start { snapshot, error in
+                autoreleasepool {
+                    guard let snapshot = snapshot else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    
+                    UIGraphicsBeginImageContextWithOptions(mapRect.size, true, 1.0)
+                    defer { UIGraphicsEndImageContext() }
+                    
+                    guard let context = UIGraphicsGetCurrentContext() else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    
+                    snapshot.image.draw(at: .zero)
+                    
+                    context.setLineWidth(6)
+                    context.setLineCap(.round)
+                    context.setLineJoin(.round)
+                    
+                    context.setStrokeColor(UIColor.systemGray.withAlphaComponent(0.4).cgColor)
+                    if let firstPoint = self.routePoints.first {
+                        let startPt = snapshot.point(for: firstPoint.coordinate)
+                        context.move(to: startPt)
+                        
+                        for routePoint in self.routePoints.dropFirst() {
+                            let pt = snapshot.point(for: routePoint.coordinate)
+                            context.addLine(to: pt)
+                        }
+                        context.strokePath()
+                    }
+                    
+                    if pointIndex > 0 {
+                        context.setStrokeColor(UIColor.systemBlue.cgColor)
+                        context.setLineWidth(8)
+                        
+                        let firstPoint = snapshot.point(for: self.routePoints[0].coordinate)
+                        context.move(to: firstPoint)
+                        
+                        for i in 1...min(pointIndex, self.routePoints.count - 1) {
+                            let pt = snapshot.point(for: self.routePoints[i].coordinate)
+                            context.addLine(to: pt)
+                        }
+                        context.strokePath()
+                    }
+                    
+                    let startPoint = snapshot.point(for: self.routePoints[0].coordinate)
+                    context.setFillColor(UIColor.systemGreen.cgColor)
+                    context.fillEllipse(in: CGRect(x: startPoint.x - 12, y: startPoint.y - 12, width: 24, height: 24))
+                    context.setFillColor(UIColor.white.cgColor)
+                    context.fillEllipse(in: CGRect(x: startPoint.x - 6, y: startPoint.y - 6, width: 12, height: 12))
+                    
+                    let endPoint = snapshot.point(for: self.routePoints[self.routePoints.count - 1].coordinate)
+                    context.setFillColor(UIColor.systemRed.cgColor)
+                    context.fillEllipse(in: CGRect(x: endPoint.x - 12, y: endPoint.y - 12, width: 24, height: 24))
+                    context.setFillColor(UIColor.white.cgColor)
+                    context.fillEllipse(in: CGRect(x: endPoint.x - 6, y: endPoint.y - 6, width: 12, height: 12))
+                    
+                    let currentPoint = snapshot.point(for: point.coordinate)
+                    context.setFillColor(UIColor.white.cgColor)
+                    context.fillEllipse(in: CGRect(x: currentPoint.x - 15, y: currentPoint.y - 15, width: 30, height: 30))
+                    context.setFillColor(UIColor.systemBlue.cgColor)
+                    context.fillEllipse(in: CGRect(x: currentPoint.x - 11, y: currentPoint.y - 11, width: 22, height: 22))
+                    context.setFillColor(UIColor.white.cgColor)
+                    context.fillEllipse(in: CGRect(x: currentPoint.x - 5, y: currentPoint.y - 5, width: 10, height: 10))
+                    
+                    let finalImage = UIGraphicsGetImageFromCurrentImageContext()
+                    continuation.resume(returning: finalImage)
+                }
+            }
+        }
+    }
+    
+    private func createVideoFrameHybrid(size: CGSize, pointIndex: Int, totalPoints: Int, mapSnapshot: UIImage?) -> CVPixelBuffer? {
+        let point = routePoints[pointIndex]
+        
+        var pixelBuffer: CVPixelBuffer?
+        let options: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+        
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            Int(size.width),
+            Int(size.height),
+            kCVPixelFormatType_32ARGB,
+            options as CFDictionary,
+            &pixelBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        
+        guard let context = CGContext(
+            data: CVPixelBufferGetBaseAddress(buffer),
+            width: Int(size.width),
+            height: Int(size.height),
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+        ) else {
+            return nil
+        }
+        
+        context.setFillColor(UIColor.black.cgColor)
+        context.fill(CGRect(origin: .zero, size: size))
+        
+        let mapRect = CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7)
+        
+        if let snapshot = mapSnapshot, let cgImage = snapshot.cgImage {
+            context.draw(cgImage, in: mapRect)
+        } else {
+            drawSimpleRouteMap(context: context, point: point, pointIndex: pointIndex, mapRect: mapRect)
+        }
+        
+        drawOverlays(context: context, point: point, pointIndex: pointIndex, totalPoints: totalPoints, size: size)
+        
+        return buffer
     }
     
     private func generateMapSnapshot(for pointIndex: Int, size: CGSize) async -> UIImage? {
@@ -961,20 +1084,17 @@ struct InteractiveTripMapView: View {
             return nil
         }
         
-        // Fill background
         context.setFillColor(UIColor.black.cgColor)
         context.fill(CGRect(origin: .zero, size: size))
         
         let mapRect = CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.7)
         
-        // Draw map
         if let snapshot = cachedMapSnapshot, let cgImage = snapshot.cgImage {
             context.draw(cgImage, in: mapRect)
         } else {
             drawSimpleRouteMap(context: context, point: point, pointIndex: pointIndex, mapRect: mapRect)
         }
         
-        // CRITICAL: Draw overlays on every frame
         drawOverlays(context: context, point: point, pointIndex: pointIndex, totalPoints: totalPoints, size: size)
         
         return buffer
@@ -1003,7 +1123,6 @@ struct InteractiveTripMapView: View {
             return CGPoint(x: x, y: y)
         }
         
-        // Draw traveled route (blue)
         if pointIndex > 0 {
             context.setStrokeColor(UIColor.systemBlue.cgColor)
             context.setLineWidth(8)
@@ -1020,7 +1139,6 @@ struct InteractiveTripMapView: View {
             context.strokePath()
         }
         
-        // Draw remaining route (gray)
         if pointIndex < routePoints.count - 1 {
             context.setStrokeColor(UIColor.systemGray3.cgColor)
             context.setLineWidth(6)
@@ -1037,21 +1155,18 @@ struct InteractiveTripMapView: View {
             context.strokePath()
         }
         
-        // Draw start point marker (green)
         let startPoint = pointForCoordinate(routePoints[0].coordinate)
         context.setFillColor(UIColor.systemGreen.cgColor)
         context.fillEllipse(in: CGRect(x: startPoint.x - 15, y: startPoint.y - 15, width: 30, height: 30))
         context.setFillColor(UIColor.white.cgColor)
         context.fillEllipse(in: CGRect(x: startPoint.x - 8, y: startPoint.y - 8, width: 16, height: 16))
         
-        // Draw end point marker (red)
         let endPoint = pointForCoordinate(routePoints[routePoints.count - 1].coordinate)
         context.setFillColor(UIColor.systemRed.cgColor)
         context.fillEllipse(in: CGRect(x: endPoint.x - 15, y: endPoint.y - 15, width: 30, height: 30))
         context.setFillColor(UIColor.white.cgColor)
         context.fillEllipse(in: CGRect(x: endPoint.x - 8, y: endPoint.y - 8, width: 16, height: 16))
         
-        // Draw current position marker
         let currentPoint = pointForCoordinate(point.coordinate)
         
         context.setFillColor(UIColor.white.cgColor)
@@ -1068,11 +1183,9 @@ struct InteractiveTripMapView: View {
         let overlayY = size.height * 0.7
         let overlayHeight = size.height * 0.3
         
-        // Draw semi-transparent background
         context.setFillColor(UIColor.black.withAlphaComponent(0.8).cgColor)
         context.fill(CGRect(x: 0, y: overlayY, width: size.width, height: overlayHeight))
         
-        // Use NSString drawing which works in normal coordinate system
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: UIFont.systemFont(ofSize: 32, weight: .medium),
             .foregroundColor: UIColor.lightGray
@@ -1088,18 +1201,15 @@ struct InteractiveTripMapView: View {
             .foregroundColor: UIColor.white
         ]
         
-        // Create an image context for text rendering
         UIGraphicsBeginImageContextWithOptions(CGSize(width: size.width, height: overlayHeight), false, 1.0)
         guard let textContext = UIGraphicsGetCurrentContext() else { return }
         
-        // Speed (left side)
         let speedLabel = "SPEED" as NSString
         let speedValue = formatSpeed(point.speed) as NSString
         
         speedLabel.draw(at: CGPoint(x: 80, y: 50), withAttributes: labelAttributes)
         speedValue.draw(at: CGPoint(x: 80, y: 90), withAttributes: valueAttributes)
         
-        // Time (center)
         let timeLabel = "TIME" as NSString
         let timeValue = point.timestamp.formatted(date: .omitted, time: .shortened) as NSString
         
@@ -1110,7 +1220,6 @@ struct InteractiveTripMapView: View {
         timeLabel.draw(at: CGPoint(x: centerX - timeLabelSize.width / 2, y: 50), withAttributes: labelAttributes)
         timeValue.draw(at: CGPoint(x: centerX - timeValueSize.width / 2, y: 90), withAttributes: smallValueAttributes)
         
-        // Distance (right side)
         let distanceLabel = "DISTANCE" as NSString
         let distanceValue = formatDistance(point.distanceFromStart) as NSString
         
@@ -1120,28 +1229,23 @@ struct InteractiveTripMapView: View {
         distanceLabel.draw(at: CGPoint(x: size.width - 80 - distanceLabelSize.width, y: 50), withAttributes: labelAttributes)
         distanceValue.draw(at: CGPoint(x: size.width - 80 - distanceValueSize.width, y: 90), withAttributes: smallValueAttributes)
         
-        // Get the rendered text as an image
         let textImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         
-        // Draw the text image onto the main context
         if let textImage = textImage, let cgImage = textImage.cgImage {
             context.draw(cgImage, in: CGRect(x: 0, y: overlayY, width: size.width, height: overlayHeight))
         }
         
-        // Progress bar
         let progressBarY = overlayY + 240
         let progressBarWidth = size.width - 160
         let progressBarHeight: CGFloat = 16
         
-        // Background
         context.setFillColor(UIColor.darkGray.cgColor)
         let progressBarRect = CGRect(x: 80, y: progressBarY, width: progressBarWidth, height: progressBarHeight)
         let progressBarPath = UIBezierPath(roundedRect: progressBarRect, cornerRadius: progressBarHeight / 2)
         context.addPath(progressBarPath.cgPath)
         context.fillPath()
         
-        // Progress fill
         let progress = CGFloat(pointIndex) / CGFloat(max(totalPoints - 1, 1))
         context.setFillColor(UIColor.systemBlue.cgColor)
         let filledRect = CGRect(x: 80, y: progressBarY, width: progressBarWidth * progress, height: progressBarHeight)
@@ -1149,7 +1253,6 @@ struct InteractiveTripMapView: View {
         context.addPath(filledPath.cgPath)
         context.fillPath()
         
-        // Progress percentage text
         UIGraphicsBeginImageContextWithOptions(CGSize(width: 200, height: 60), false, 1.0)
         
         let progressText = "\(Int(progress * 100))%" as NSString
@@ -1169,7 +1272,6 @@ struct InteractiveTripMapView: View {
     }
     
     private func drawText(context: CGContext, text: String, x: CGFloat, y: CGFloat, fontSize: CGFloat, color: UIColor) {
-        // This function is no longer needed but kept for compatibility
     }
     
     private func saveVideoToFiles(url: URL) {
@@ -1428,3 +1530,4 @@ struct RoundedCorner: Shape {
         return Path(path.cgPath)
     }
 }
+

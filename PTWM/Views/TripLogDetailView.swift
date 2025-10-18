@@ -1,6 +1,3 @@
-// TripLogDetailView.swift
-// Enhanced version with improved UI, sharing, export, and interactive features
-
 import SwiftUI
 import MapKit
 
@@ -13,7 +10,7 @@ struct TripLogDetailView: View {
     @State private var editingTrip: Trip?
     @State private var showingShareSheet = false
     @State private var showingDeleteConfirmation = false
-    @State private var selectedPhotoURL: URL?
+    @State private var selectedPhotoIndex: Int = 0
     @State private var showingFullScreenPhoto = false
     @State private var expandedSections: Set<String> = ["details"]
     
@@ -21,10 +18,8 @@ struct TripLogDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Header Card with Trip Summary
                     tripHeaderCard
                     
-                    // Map Section
                     if trip.routeCoordinates.count >= 2 {
                         mapSection
                     }
@@ -33,29 +28,24 @@ struct TripLogDetailView: View {
                         interactiveMapSection
                     }
                     
-                    // Trip Statistics Card
                     statisticsCard
                     
-                    // Category and Notes Section
                     if !trip.reason.isEmpty || !trip.notes.isEmpty {
                         infoCard
                     }
                     
-                    // Financial Information
                     if fuelUsedForTrip != nil || !trip.pay.isEmpty {
                         financialCard
                     }
                     
-                    // Media Section
                     if !trip.photoURLs.isEmpty {
-                        photosSection
+                        updatedPhotosSection
                     }
                     
                     if !trip.audioNotes.isEmpty {
                         audioNotesSection
                     }
                     
-                    // Additional Metadata
                     if trip.isRecovered {
                         recoveryBanner
                     }
@@ -99,9 +89,11 @@ struct TripLogDetailView: View {
                 ShareSheet(activityItems: [generateShareText()])
             }
             .fullScreenCover(isPresented: $showingFullScreenPhoto) {
-                if let photoURL = selectedPhotoURL {
-                    PhotoDetailView(photoURL: photoURL, isPresented: $showingFullScreenPhoto)
-                }
+                EnhancedPhotoDetailView(
+                    photoURLs: trip.photoURLs,
+                    initialIndex: selectedPhotoIndex,
+                    isPresented: $showingFullScreenPhoto
+                )
             }
             .alert("Delete Trip", isPresented: $showingDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
@@ -109,10 +101,8 @@ struct TripLogDetailView: View {
                     if let idx = tripManager.trips.firstIndex(where: { $0.id == trip.id }) {
                         tripManager.deleteTrip(at: IndexSet(integer: idx))
                     } else {
-                        // Fallback: try a direct delete if supported by TripManager
                         #if compiler(>=5.7)
                         _ = { (manager: Any) in
-                            // no-op shim to keep compile-time only
                         }(tripManager)
                         #endif
                     }
@@ -127,75 +117,75 @@ struct TripLogDetailView: View {
     // MARK: - TripLogDetailView Statistics Card Fix
     
     private var calculatedAverageSpeed: Double {
-            if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
-                return avgSpeed
-            }
-            let duration = trip.endTime.timeIntervalSince(trip.startTime)
-            guard duration > 0 else { return 0 }
-            let distanceMeters = trip.distance * 1609.34
-            return distanceMeters / duration
+        if let avgSpeed = trip.averageSpeed, avgSpeed > 0 {
+            return avgSpeed
         }
-        
-        private var statisticsCard: some View {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Statistics")
-                    .font(.headline)
+        let duration = trip.endTime.timeIntervalSince(trip.startTime)
+        guard duration > 0 else { return 0 }
+        let distanceMeters = trip.distance * 1609.34
+        return distanceMeters / duration
+    }
+    
+    private var statisticsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Statistics")
+                .font(.headline)
+            
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 16) {
+                StatItem(
+                    icon: "speedometer",
+                    title: "Distance",
+                    value: DistanceFormatterHelper.string(for: trip.distance, useKilometers: useKilometers),
+                    color: .blue
+                )
                 
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 16) {
+                StatItem(
+                    icon: "clock",
+                    title: "Duration",
+                    value: formattedDuration(from: trip.startTime, to: trip.endTime),
+                    color: .green
+                )
+                
+                StatItem(
+                    icon: "gauge",
+                    title: "Avg Speed",
+                    value: AverageSpeedFormatter.string(forMetersPerSecond: calculatedAverageSpeed, useKilometers: useKilometers),
+                    color: .orange
+                )
+                
+                if let fuelGallons = fuelUsedForTrip {
                     StatItem(
-                        icon: "speedometer",
-                        title: "Distance",
-                        value: DistanceFormatterHelper.string(for: trip.distance, useKilometers: useKilometers),
-                        color: .blue
+                        icon: "fuelpump",
+                        title: "Fuel Used",
+                        value: String(format: "%.2f gal", fuelGallons),
+                        color: .red
                     )
-                    
-                    StatItem(
-                        icon: "clock",
-                        title: "Duration",
-                        value: formattedDuration(from: trip.startTime, to: trip.endTime),
-                        color: .green
-                    )
-                    
-                    StatItem(
-                        icon: "gauge",
-                        title: "Avg Speed",
-                        value: AverageSpeedFormatter.string(forMetersPerSecond: calculatedAverageSpeed, useKilometers: useKilometers),
-                        color: .orange
-                    )
-                    
-                    if let fuelGallons = fuelUsedForTrip {
-                        StatItem(
-                            icon: "fuelpump",
-                            title: "Fuel Used",
-                            value: String(format: "%.2f gal", fuelGallons),
-                            color: .red
-                        )
-                    }
                 }
             }
-            .padding()
-            .background(Color(.systemBackground))
-            .cornerRadius(12)
-            .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
         }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private func formattedDuration(from start: Date, to end: Date) -> String {
+        let interval = Int(end.timeIntervalSince(start))
+        let hours = interval / 3600
+        let minutes = (interval % 3600) / 60
+        let seconds = interval % 60
         
-        private func formattedDuration(from start: Date, to end: Date) -> String {
-            let interval = Int(end.timeIntervalSince(start))
-            let hours = interval / 3600
-            let minutes = (interval % 3600) / 60
-            let seconds = interval % 60
-            
-            if hours > 0 {
-                return "\(hours)h \(minutes)m"
-            } else if minutes > 0 {
-                return "\(minutes)m"
-            } else {
-                return "\(seconds)s"
-            }
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else if minutes > 0 {
+            return "\(minutes)m"
+        } else {
+            return "\(seconds)s"
         }
+    }
     
     // MARK: - View Components
     
@@ -320,7 +310,7 @@ struct TripLogDetailView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
     
-    private var photosSection: some View {
+    private var updatedPhotosSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Photos")
@@ -337,23 +327,19 @@ struct TripLogDetailView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(trip.photoURLs, id: \.self) { url in
-                        if let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
-                            Button(action: {
-                                selectedPhotoURL = url
-                                showingFullScreenPhoto = true
-                            }) {
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 120)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                                    )
-                                    .shadow(radius: 3)
-                            }
+                    ForEach(Array(trip.photoURLs.enumerated()), id: \.element) { index, url in
+                        Button(action: {
+                            selectedPhotoIndex = index
+                            showingFullScreenPhoto = true
+                        }) {
+                            ThumbnailImage(url: url)
+                                .frame(width: 120, height: 120)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                )
+                                .shadow(radius: 3)
                         }
                     }
                 }
@@ -390,7 +376,6 @@ struct TripLogDetailView: View {
                         .lineLimit(1)
                     Spacer()
                     Button(action: {
-                        // Play audio note
                     }) {
                         Image(systemName: "play.circle.fill")
                             .foregroundColor(.accentColor)
@@ -423,12 +408,43 @@ struct TripLogDetailView: View {
         .cornerRadius(8)
     }
     
+    private var interactiveMapSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Interactive Route Playback")
+                .font(.headline)
+            
+            NavigationLink(destination: FullScreenRoutePlaybackView(trip: trip)) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Scrub through your trip")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Text("View speed and time at any point")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "play.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.accentColor)
+                }
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                )
+            }
+        }
+    }
+    
     // MARK: - Helper Properties
     
     private var fuelUsedForTrip: Double? {
         let mpg: Double
         if let avgSpeed = trip.averageSpeed {
-            if avgSpeed >= 22.35 { // 50 mph in m/s
+            if avgSpeed >= 22.35 {
                 mpg = tripManager.highwayMPG
             } else {
                 mpg = tripManager.cityMPG
@@ -482,10 +498,8 @@ struct TripLogDetailView: View {
     }
     
     private func exportTripData() {
-        // Implement CSV or JSON export functionality
         let exportData = generateShareText()
         UIPasteboard.general.string = exportData
-        // Show a success message or save to file
     }
 }
 
@@ -516,50 +530,383 @@ struct StatItem: View {
     }
 }
 
-struct PhotoDetailView: View {
-    let photoURL: URL
+struct EnhancedPhotoDetailView: View {
+    let photoURLs: [URL]
+    let initialIndex: Int
     @Binding var isPresented: Bool
+    @State private var currentIndex: Int
+    @State private var image: UIImage?
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var isLoading = true
+    @State private var loadError = false
+    
+    init(photoURLs: [URL], initialIndex: Int, isPresented: Binding<Bool>) {
+        self.photoURLs = photoURLs
+        self.initialIndex = initialIndex
+        self._isPresented = isPresented
+        self._currentIndex = State(initialValue: initialIndex)
+    }
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            if let data = try? Data(contentsOf: photoURL), let img = UIImage(data: data) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(scale)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { value in
-                                scale = lastScale * value
-                            }
-                            .onEnded { _ in
-                                lastScale = scale
-                                if scale < 1 {
-                                    withAnimation {
-                                        scale = 1
-                                        lastScale = 1
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+            } else if loadError {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.white)
+                    Text("Failed to load image")
+                        .foregroundColor(.white)
+                }
+            } else if let image = image {
+                GeometryReader { geometry in
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .scaleEffect(scale)
+                        .offset(x: offset.width, y: offset.height)
+                        .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastScale
+                                    lastScale = value
+                                    scale = min(max(scale * delta, 1), 10)
+                                }
+                                .onEnded { _ in
+                                    lastScale = 1.0
+                                    withAnimation(.spring(response: 0.3)) {
+                                        if scale < 1 {
+                                            scale = 1
+                                            offset = .zero
+                                            lastOffset = .zero
+                                        } else {
+                                            offset = constrainOffset(geometry: geometry)
+                                            lastOffset = offset
+                                        }
                                     }
                                 }
+                        )
+                        .simultaneousGesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    if scale > 1 {
+                                        offset = CGSize(
+                                            width: lastOffset.width + value.translation.width,
+                                            height: lastOffset.height + value.translation.height
+                                        )
+                                    }
+                                }
+                                .onEnded { _ in
+                                    withAnimation(.spring(response: 0.3)) {
+                                        offset = constrainOffset(geometry: geometry)
+                                        lastOffset = offset
+                                    }
+                                }
+                        )
+                        .onTapGesture(count: 2) {
+                            withAnimation(.spring(response: 0.3)) {
+                                if scale > 1 {
+                                    scale = 1
+                                    offset = .zero
+                                    lastOffset = .zero
+                                } else {
+                                    scale = 3
+                                }
                             }
-                    )
+                        }
+                }
+            }
+            
+            if photoURLs.count > 1 && scale <= 1 {
+                HStack {
+                    if currentIndex > 0 {
+                        Button(action: { goToPrevious() }) {
+                            Image(systemName: "chevron.left.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
+                        }
+                        .padding(.leading, 20)
+                    }
+                    
+                    Spacer()
+                    
+                    if currentIndex < photoURLs.count - 1 {
+                        Button(action: { goToNext() }) {
+                            Image(systemName: "chevron.right.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundColor(.white)
+                                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
+                        }
+                        .padding(.trailing, 20)
+                    }
+                }
             }
             
             VStack {
                 HStack {
+                    if photoURLs.count > 1 {
+                        Text("\(currentIndex + 1) / \(photoURLs.count)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.6))
+                            .cornerRadius(20)
+                            .padding(.leading)
+                    }
+                    
                     Spacer()
+                    
                     Button(action: { isPresented = false }) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.title)
                             .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
                             .padding()
                     }
                 }
                 Spacer()
+                
+                if !isLoading && !loadError && scale > 1 {
+                    Text("Pinch to zoom • Drag to pan • Double-tap to reset")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(20)
+                        .padding(.bottom, 20)
+                } else if !isLoading && !loadError && photoURLs.count > 1 {
+                    Text("Swipe or tap arrows to navigate • Double-tap to zoom")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(20)
+                        .padding(.bottom, 20)
+                }
             }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 50)
+                .onEnded { value in
+                    if scale <= 1 {
+                        if value.translation.width < -50 {
+                            goToNext()
+                        } else if value.translation.width > 50 {
+                            goToPrevious()
+                        }
+                    }
+                }
+        )
+        .onAppear {
+            loadImageAsync()
+        }
+        .onChange(of: currentIndex) { _ in
+            scale = 1.0
+            lastScale = 1.0
+            offset = .zero
+            lastOffset = .zero
+            isLoading = true
+            loadError = false
+            image = nil
+            loadImageAsync()
+        }
+    }
+    
+    private func goToNext() {
+        if currentIndex < photoURLs.count - 1 {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                currentIndex += 1
+            }
+        }
+    }
+    
+    private func goToPrevious() {
+        if currentIndex > 0 {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                currentIndex -= 1
+            }
+        }
+    }
+    
+    private func loadImageAsync() {
+        let photoURL = photoURLs[currentIndex]
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let data = try? Data(contentsOf: photoURL) else {
+                DispatchQueue.main.async {
+                    isLoading = false
+                    loadError = true
+                }
+                return
+            }
+            
+            guard let loadedImage = UIImage(data: data) else {
+                DispatchQueue.main.async {
+                    isLoading = false
+                    loadError = true
+                }
+                return
+            }
+            
+            let downsampledImage: UIImage
+            if loadedImage.size.width > 4096 || loadedImage.size.height > 4096 {
+                downsampledImage = downsample(image: loadedImage, to: CGSize(width: 4096, height: 4096))
+            } else {
+                downsampledImage = loadedImage
+            }
+            
+            DispatchQueue.main.async {
+                self.image = downsampledImage
+                isLoading = false
+            }
+        }
+    }
+    
+    private func downsample(image: UIImage, to targetSize: CGSize) -> UIImage {
+        let size = image.size
+        let widthRatio = targetSize.width / size.width
+        let heightRatio = targetSize.height / size.height
+        let ratio = min(widthRatio, heightRatio)
+        
+        let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
+        
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+    
+    private func constrainOffset(geometry: GeometryProxy) -> CGSize {
+        guard let image = image else { return .zero }
+        
+        let imageSize = image.size
+        let viewSize = geometry.size
+        
+        let imageAspect = imageSize.width / imageSize.height
+        let viewAspect = viewSize.width / viewSize.height
+        
+        let displaySize: CGSize
+        if imageAspect > viewAspect {
+            displaySize = CGSize(width: viewSize.width, height: viewSize.width / imageAspect)
+        } else {
+            displaySize = CGSize(width: viewSize.height * imageAspect, height: viewSize.height)
+        }
+        
+        let scaledWidth = displaySize.width * scale
+        let scaledHeight = displaySize.height * scale
+        
+        let maxOffsetX = max(0, (scaledWidth - viewSize.width) / 2)
+        let maxOffsetY = max(0, (scaledHeight - viewSize.height) / 2)
+        
+        return CGSize(
+            width: min(max(offset.width, -maxOffsetX), maxOffsetX),
+            height: min(max(offset.height, -maxOffsetY), maxOffsetY)
+        )
+    }
+}
+
+struct ThumbnailImage: View {
+    let url: URL
+    @State private var thumbnail: UIImage?
+    @State private var isLoading = true
+    
+    var body: some View {
+        Group {
+            if let thumbnail = thumbnail {
+                Image(uiImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            } else if isLoading {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .overlay(
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    )
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .overlay(
+                        Image(systemName: "photo")
+                            .foregroundColor(.gray)
+                    )
+            }
+        }
+        .onAppear {
+            loadThumbnail()
+        }
+    }
+    
+    private func loadThumbnail() {
+        let cacheKey = url.lastPathComponent
+        if let cached = ThumbnailCache.shared.get(cacheKey) {
+            self.thumbnail = cached
+            self.isLoading = false
+            return
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let data = try? Data(contentsOf: url),
+                  let image = UIImage(data: data) else {
+                DispatchQueue.main.async {
+                    isLoading = false
+                }
+                return
+            }
+            
+            let thumbSize = CGSize(width: 240, height: 240)
+            let thumb = createThumbnail(from: image, size: thumbSize)
+            
+            DispatchQueue.main.async {
+                ThumbnailCache.shared.set(thumb, forKey: cacheKey)
+                self.thumbnail = thumb
+                self.isLoading = false
+            }
+        }
+    }
+    
+    private func createThumbnail(from image: UIImage, size: CGSize) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+class ThumbnailCache {
+    static let shared = ThumbnailCache()
+    private var cache: [String: UIImage] = [:]
+    private let queue = DispatchQueue(label: "thumbnail.cache", attributes: .concurrent)
+    
+    func get(_ key: String) -> UIImage? {
+        queue.sync {
+            cache[key]
+        }
+    }
+    
+    func set(_ image: UIImage, forKey key: String) {
+        queue.async(flags: .barrier) {
+            self.cache[key] = image
+        }
+    }
+    
+    func clear() {
+        queue.async(flags: .barrier) {
+            self.cache.removeAll()
         }
     }
 }
@@ -567,39 +914,6 @@ struct PhotoDetailView: View {
 extension Array where Element == CodableCoordinate {
     var clCoordinates: [CLLocationCoordinate2D] {
         map { $0.clCoordinate }
-    }
-}
-
-extension TripLogDetailView {
-    var interactiveMapSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Interactive Route Playback")
-                .font(.headline)
-            
-            NavigationLink(destination: FullScreenRoutePlaybackView(trip: trip)) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Scrub through your trip")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                        Text("View speed and time at any point")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "play.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.accentColor)
-                }
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-                )
-            }
-        }
     }
 }
 
@@ -613,7 +927,6 @@ struct FullScreenRoutePlaybackView: View {
             InteractiveTripMapView(trip: trip, selectedPointIndex: $selectedPointIndex)
                 .ignoresSafeArea()
             
-            // Close button
             Button(action: { dismiss() }) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.title)

@@ -1,10 +1,3 @@
-//
-//  CodableCoordinate.swift
-//  Photo Tracker
-//
-//  Created by tyler kaska on 6/26/25.
-//
-
 import Foundation
 import CoreLocation
 
@@ -41,14 +34,12 @@ struct CodableCoordinate: Codable, Equatable, Hashable {
     
     // MARK: - Methods
     
-    /// Calculate distance to another coordinate in meters
     func distance(to other: CodableCoordinate) -> CLLocationDistance {
         let location1 = CLLocation(latitude: latitude, longitude: longitude)
         let location2 = CLLocation(latitude: other.latitude, longitude: other.longitude)
         return location1.distance(from: location2)
     }
     
-    /// Create a CLLocation from this coordinate
     func toLocation() -> CLLocation {
         CLLocation(latitude: latitude, longitude: longitude)
     }

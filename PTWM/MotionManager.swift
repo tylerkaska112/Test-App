@@ -102,7 +102,6 @@ class MotionManager: ObservableObject {
     
     // MARK: - Private Methods
     private func determineActivityType(_ activity: CMMotionActivity) -> MotionActivityType {
-        // Check in order of priority (more specific activities first)
         if activity.running { return .running }
         if activity.walking { return .walking }
         if activity.cycling { return .cycling }
